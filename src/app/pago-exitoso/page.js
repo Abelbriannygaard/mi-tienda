@@ -1,4 +1,20 @@
-export default function PagoExitoso() {
+import { guardarPedido } from '@/lib/guardarPedido'
+
+export default async function PagoExitoso({ searchParams }) {
+  const params = await searchParams
+  const paymentId = params.collection_id || params.payment_id
+
+  let guardado = false
+
+  if (paymentId) {
+    try {
+      await guardarPedido(paymentId)
+      guardado = true
+    } catch (error) {
+      console.error('No se pudo guardar el pedido desde pago-exitoso:', error)
+    }
+  }
+
   return (
     <div style={{ padding: '40px', textAlign: 'center' }}>
       <h1 style={{ color: '#16a34a', fontSize: '28px' }}>✅ ¡Gracias por tu compra!</h1>
