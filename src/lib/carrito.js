@@ -5,6 +5,7 @@ const CarritoContext = createContext()
 
 export function CarritoProvider({ children }) {
   const [items, setItems] = useState([])
+  const [zonaEnvio, setZonaEnvio] = useState(null)
 
   function agregarAlCarrito(producto) {
     setItems((prev) => {
@@ -26,7 +27,7 @@ export function CarritoProvider({ children }) {
     const respuesta = await fetch('/api/crear-preferencia', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({ items, zonaEnvio }),
     })
 
     const datos = await respuesta.json()
@@ -38,11 +39,13 @@ export function CarritoProvider({ children }) {
     }
   }
 
-  const total = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+  const totalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+  const costoEnvio = zonaEnvio ? zonaEnvio.costo : 0
+  const total = totalProductos + costoEnvio
   const cantidadTotal = items.reduce((acc, item) => acc + item.cantidad, 0)
 
   return (
-    <CarritoContext.Provider value={{ items, agregarAlCarrito, quitarDelCarrito, total, cantidadTotal, pagar }}>
+    <CarritoContext.Provider value={{ items, agregarAlCarrito, quitarDelCarrito, total, totalProductos, costoEnvio, cantidadTotal, pagar, zonaEnvio, setZonaEnvio }}>
       {children}
     </CarritoContext.Provider>
   )
