@@ -1,28 +1,30 @@
 'use client'
 
+import Link from 'next/link'
 import { useCarrito } from '@/lib/carrito'
 
 export default function CarritoIcono() {
-  const { cantidadTotal, total, pagar } = useCarrito()
+  const { cantidadTotal, total } = useCarrito()
 
   return (
     <div style={{ padding: '10px 16px', border: '1px solid #ccc', borderRadius: '8px' }}>
       🛒 {cantidadTotal} items — ${total}
       {cantidadTotal > 0 && (
-        <button
-          onClick={pagar}
-          style={{
-            marginLeft: '12px',
-            padding: '6px 14px',
-            backgroundColor: '#009ee3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-          }}
-        >
-          Finalizar compra
-        </button>
+        <Link href="/checkout">
+          <button
+            style={{
+              marginLeft: '12px',
+              padding: '6px 14px',
+              backgroundColor: '#009ee3',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+            }}
+          >
+            Finalizar compra
+          </button>
+        </Link>
       )}
     </div>
   )

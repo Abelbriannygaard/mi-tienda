@@ -7,18 +7,17 @@ const client = new MercadoPagoConfig({
 
 export async function POST(request) {
   try {
-    const { items, zonaEnvio } = await request.json()
+    const { items, zonaEnvio, datosCliente } = await request.json()
 
     const preference = new Preference(client)
 
     const itemsParaMP = items.map((item) => ({
-      title: item.nombre,
+      title: item.color ? `${item.nombre} (${item.color})` : item.nombre,
       quantity: item.cantidad,
       unit_price: item.precio,
       currency_id: 'ARS',
     }))
 
-    // Si hay envío con costo, lo agregamos como un item más
     if (zonaEnvio && zonaEnvio.costo > 0) {
       itemsParaMP.push({
         title: `Envío - ${zonaEnvio.nombre}`,
@@ -31,13 +30,21 @@ export async function POST(request) {
     const resultado = await preference.create({
       body: {
         items: itemsParaMP,
+        payer: {
+          name: datosCliente?.nombre,
+          email: datosCliente?.email,
+        },
+        metadata: {
+          datos_cliente: datosCliente,
+          zona_envio: zonaEnvio,
+        },
         back_urls: {
-          success: 'https://mi-tienda-henna.vercel.app/pago-exitoso',
-          failure: 'https://mi-tienda-henna.vercel.app/pago-fallido',
-          pending: 'https://mi-tienda-henna.vercel.app/pago-pendiente',
+          success: 'https://tienda.dimedetiambos.com.ar/pago-exitoso',
+          failure: 'https://tienda.dimedetiambos.com.ar/pago-fallido',
+          pending: 'https://tienda.dimedetiambos.com.ar/pago-pendiente',
         },
         auto_return: 'approved',
-        notification_url: 'https://mi-tienda-henna.vercel.app/api/webhook-mercadopago',
+        notification_url: 'https://tienda.dimedetiambos.com.ar/api/webhook-mercadopago',
       },
     })
 

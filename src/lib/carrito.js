@@ -9,10 +9,14 @@ export function CarritoProvider({ children }) {
 
   function agregarAlCarrito(producto) {
     setItems((prev) => {
-      const existe = prev.find((item) => item.id === producto.id)
+      const existe = prev.find(
+        (item) => item.id === producto.id && item.variante_id === producto.variante_id
+      )
       if (existe) {
         return prev.map((item) =>
-          item.id === producto.id ? { ...item, cantidad: item.cantidad + 1 } : item
+          item.id === producto.id && item.variante_id === producto.variante_id
+            ? { ...item, cantidad: item.cantidad + 1 }
+            : item
         )
       }
       return [...prev, { ...producto, cantidad: 1 }]
@@ -23,11 +27,11 @@ export function CarritoProvider({ children }) {
     setItems((prev) => prev.filter((item) => item.id !== id))
   }
 
-  async function pagar() {
+  async function pagar(datosCliente) {
     const respuesta = await fetch('/api/crear-preferencia', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, zonaEnvio }),
+      body: JSON.stringify({ items, zonaEnvio, datosCliente }),
     })
 
     const datos = await respuesta.json()
@@ -35,7 +39,7 @@ export function CarritoProvider({ children }) {
     if (datos.init_point) {
       window.location.href = datos.init_point
     } else {
-      alert('Hubo un error al generar el pago. Probá de nuevo.')
+      throw new Error('No se pudo generar el link de pago')
     }
   }
 

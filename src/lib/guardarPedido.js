@@ -11,18 +11,18 @@ const supabaseAdmin = createClient(
 )
 
 export async function guardarPedido(paymentId) {
-  // Le preguntamos a MercadoPago los detalles reales de ese pago
   const payment = new Payment(client)
   const pago = await payment.get({ id: paymentId })
 
-  // Armamos la lista de productos comprados en un formato simple
   const items = pago.additional_info?.items?.map((item) => ({
     nombre: item.title,
     cantidad: item.quantity,
     precio: item.unit_price,
   })) || []
 
-  // Guardamos (o actualizamos si ya existía) el pedido en Supabase
+  const datosCliente = pago.metadata?.datos_cliente || {}
+  const zonaEnvio = pago.metadata?.zona_envio || null
+
   const { error } = await supabaseAdmin
     .from('pedidos')
     .upsert(
@@ -31,7 +31,21 @@ export async function guardarPedido(paymentId) {
         estado: pago.status,
         total: pago.transaction_amount,
         items: items,
-        comprador_email: pago.payer?.email || null,
+        comprador_email: datosCliente.email || pago.payer?.email || null,
+        cliente_nombre: datosCliente.nombre || null,
+        cliente_dni: datosCliente.dni || null,
+        cliente_telefono: datosCliente.telefono || null,
+        direccion: datosCliente.calle
+          ? {
+              calle: datosCliente.calle,
+              numero: datosCliente.numero,
+              ciudad: datosCliente.ciudad,
+              codigoPostal: datosCliente.codigoPostal,
+            }
+          : null,
+        zona_envio: zonaEnvio?.nombre || null,
+        costo_envio: zonaEnvio?.costo || 0,
+        notas: datosCliente.notas || null,
       },
       { onConflict: 'mercadopago_payment_id' }
     )
