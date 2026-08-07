@@ -1,18 +1,25 @@
-'use client'
+import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
-import { useCarrito } from '@/lib/carrito'
+export default async function ProductoCard({ producto }) {
+  const { data: variantes } = await supabase
+    .from('variantes')
+    .select('*')
+    .eq('producto_id', producto.id)
+    .limit(1)
 
-export default function ProductoCard({ producto }) {
-  const { agregarAlCarrito } = useCarrito()
+  const imagen = variantes?.[0]?.imagen_url
 
   return (
-    <div style={{ border: '1px solid #ccc', padding: '20px', borderRadius: '8px', width: '250px' }}>
-      <h2>{producto.nombre}</h2>
-      <p>{producto.descripcion}</p>
-      <p><strong>${producto.precio}</strong></p>
-      <button onClick={() => agregarAlCarrito(producto)} style={{ padding: '8px 16px', cursor: 'pointer' }}>
-        Agregar al carrito
-      </button>
-    </div>
+    <Link href={`/producto/${producto.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+      <div style={{ border: '1px solid #ccc', padding: '20px', borderRadius: '8px', width: '250px', cursor: 'pointer' }}>
+        {imagen && (
+          <img src={imagen} alt={producto.nombre} style={{ width: '100%', height: '200px', objectFit: 'cover', borderRadius: '6px', marginBottom: '10px' }} />
+        )}
+        <h2>{producto.nombre}</h2>
+        <p>{producto.descripcion}</p>
+        <p><strong>${producto.precio}</strong></p>
+      </div>
+    </Link>
   )
 }
