@@ -1,5 +1,6 @@
 'use client'
 
+import CarritoIcono from '../../CarritoIcono'
 import { useState } from 'react'
 import Link from 'next/link'
 import { useCarrito } from '@/lib/carrito'
@@ -18,7 +19,10 @@ export default function ProductoDetalle({ producto, variantes }) {
 
   return (
     <main style={{ padding: '40px', maxWidth: '900px', margin: '0 auto' }}>
-      <Link href="/" style={{ color: '#009ee3', textDecoration: 'none' }}>← Volver al catálogo</Link>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+  <Link href="/" style={{ color: '#009ee3', textDecoration: 'none' }}>← Volver al catálogo</Link>
+  <CarritoIcono />
+</div>
 
       <div style={{ display: 'flex', gap: '40px', marginTop: '20px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1', minWidth: '300px' }}>
