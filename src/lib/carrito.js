@@ -7,7 +7,7 @@ export function CarritoProvider({ children }) {
   const [items, setItems] = useState([])
   const [zonaEnvio, setZonaEnvio] = useState(null)
 
-  function agregarAlCarrito(producto) {
+  function agregarAlCarrito(producto, cantidad = 1) {
     setItems((prev) => {
       const existe = prev.find(
         (item) => item.id === producto.id && item.variante_id === producto.variante_id
@@ -15,16 +15,18 @@ export function CarritoProvider({ children }) {
       if (existe) {
         return prev.map((item) =>
           item.id === producto.id && item.variante_id === producto.variante_id
-            ? { ...item, cantidad: item.cantidad + 1 }
+            ? { ...item, cantidad: item.cantidad + cantidad }
             : item
         )
       }
-      return [...prev, { ...producto, cantidad: 1 }]
+      return [...prev, { ...producto, cantidad }]
     })
   }
 
-  function quitarDelCarrito(id) {
-    setItems((prev) => prev.filter((item) => item.id !== id))
+  function quitarDelCarrito(id, varianteId) {
+    setItems((prev) =>
+      prev.filter((item) => !(item.id === id && item.variante_id === varianteId))
+    )
   }
 
   async function pagar(datosCliente) {

@@ -66,7 +66,7 @@ export default function CarritoIcono() {
                     </p>
                   </div>
                   <button
-                    onClick={() => quitarDelCarrito(item.id)}
+                    onClick={() => quitarDelCarrito(item.id, item.variante_id)}
                     style={{
                       border: 'none',
                       background: 'none',

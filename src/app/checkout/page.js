@@ -83,7 +83,7 @@ export default function Checkout() {
       <div style={{ backgroundColor: '#f7f7f7', padding: '16px', borderRadius: '8px', marginTop: '20px' }}>
         <h3>Resumen del pedido</h3>
         {items.map((item) => (
-          <p key={item.id}>
+          <p key={`${item.id}-${item.variante_id || ''}`}>
             {item.nombre} {item.color ? `(${item.color})` : ''} x{item.cantidad} — ${item.precio * item.cantidad}
           </p>
         ))}
