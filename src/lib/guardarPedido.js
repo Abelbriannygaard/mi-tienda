@@ -39,9 +39,9 @@ export async function guardarPedido(paymentId) {
           ? {
               calle: datosCliente.calle,
               numero: datosCliente.numero,
-              pisoDepto: datosCliente.pisoDepto || null,
+              pisoDepto: datosCliente.pisoDepto || datosCliente.piso_depto || null,
               ciudad: datosCliente.ciudad,
-              codigoPostal: datosCliente.codigoPostal,
+              codigoPostal: datosCliente.codigoPostal || datosCliente.codigo_postal || null,
             }
           : null,
         zona_envio: zonaEnvio?.nombre || null,

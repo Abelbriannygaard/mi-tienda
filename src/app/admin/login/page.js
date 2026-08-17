@@ -8,6 +8,7 @@ export default function AdminLogin() {
   const [contrasena, setContrasena] = useState('')
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(false)
+  const [verContrasena, setVerContrasena] = useState(false)
   const router = useRouter()
 
   async function handleSubmit(e) {
@@ -84,22 +85,42 @@ export default function AdminLogin() {
         <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '6px', color: '#333' }}>
           Contraseña
         </label>
-        <input
-          type="password"
-          value={contrasena}
-          onChange={(e) => setContrasena(e.target.value)}
-          required
-          style={{
-            width: '100%',
-            padding: '10px 14px',
-            fontSize: '15px',
-            borderRadius: '8px',
-            border: '1px solid #ccc',
-            marginBottom: '20px',
-            outline: 'none',
-            boxSizing: 'border-box',
-          }}
-        />
+        <div style={{ position: 'relative', marginBottom: '20px' }}>
+          <input
+            type={verContrasena ? 'text' : 'password'}
+            value={contrasena}
+            onChange={(e) => setContrasena(e.target.value)}
+            required
+            style={{
+              width: '100%',
+              padding: '10px 40px 10px 14px',
+              fontSize: '15px',
+              borderRadius: '8px',
+              border: '1px solid #ccc',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setVerContrasena((v) => !v)}
+            style={{
+              position: 'absolute',
+              right: '10px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              fontSize: '16px',
+              padding: '4px',
+              color: '#666',
+            }}
+            title={verContrasena ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+          >
+            {verContrasena ? '🙈' : '👁️'}
+          </button>
+        </div>
 
         {error && (
           <p style={{ color: '#dc2626', fontSize: '14px', marginBottom: '16px' }}>{error}</p>
