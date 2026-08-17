@@ -94,7 +94,8 @@ export default async function PanelAdmin() {
 
                 {pedido.direccion && (
                   <p style={{ marginTop: '10px', fontSize: '13px', color: '#666' }}>
-                    📍 {pedido.direccion.calle} {pedido.direccion.numero}, {pedido.direccion.ciudad} (CP {pedido.direccion.codigoPostal})
+                    📍 {pedido.direccion.calle} {pedido.direccion.numero}
+                    {pedido.direccion.pisoDepto ? `, ${pedido.direccion.pisoDepto}` : ''}, {pedido.direccion.ciudad} (CP {pedido.direccion.codigoPostal})
                     {pedido.zona_envio ? ` · Envío: ${pedido.zona_envio} ($${pedido.costo_envio})` : ''}
                   </p>
                 )}

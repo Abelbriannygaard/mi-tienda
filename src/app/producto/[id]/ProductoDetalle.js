@@ -33,6 +33,9 @@ export default function ProductoDetalle({ producto, variantes }) {
   // Estado para la cantidad elegida
   const [cantidad, setCantidad] = useState(1)
 
+  // Estado para mostrar el mensaje de "agregado con éxito"
+  const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false)
+
   // Extraer todas las imágenes no vacías de la variante elegida
   const imagenesGaleria = varianteElegida
     ? [
@@ -95,6 +98,9 @@ export default function ProductoDetalle({ producto, variantes }) {
       },
       cantidad
     )
+
+    setMostrarConfirmacion(true)
+    setTimeout(() => setMostrarConfirmacion(false), 2500)
   }
 
   return (
@@ -362,11 +368,39 @@ export default function ProductoDetalle({ producto, variantes }) {
               border: 'none',
               borderRadius: '8px',
               cursor: (!varianteElegida || varianteElegida?.stock === 0) ? 'not-allowed' : 'pointer',
-              transition: 'background-color 0.2s ease',
+              transition: 'transform 0.1s ease, background-color 0.2s ease',
+            }}
+            onMouseDown={(e) => {
+              if (!varianteElegida || varianteElegida?.stock === 0) return
+              e.currentTarget.style.transform = 'scale(0.97)'
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)'
             }}
           >
             {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
           </button>
+
+          {/* Mensaje de confirmación */}
+          {mostrarConfirmacion && (
+            <div
+              style={{
+                marginTop: '12px',
+                padding: '10px 14px',
+                backgroundColor: '#dcfce7',
+                color: '#15803d',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: '600',
+                textAlign: 'center',
+              }}
+            >
+              ✓ Producto agregado al carrito
+            </div>
+          )}
         </div>
       </div>
 

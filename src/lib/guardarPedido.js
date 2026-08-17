@@ -39,6 +39,7 @@ export async function guardarPedido(paymentId) {
           ? {
               calle: datosCliente.calle,
               numero: datosCliente.numero,
+              pisoDepto: datosCliente.pisoDepto || null,
               ciudad: datosCliente.ciudad,
               codigoPostal: datosCliente.codigoPostal,
             }

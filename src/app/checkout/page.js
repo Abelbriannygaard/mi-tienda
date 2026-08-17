@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useCarrito } from '@/lib/carrito'
 import { useRouter } from 'next/navigation'
+import SelectorEnvio from './SelectorEnvio'
 
 export default function Checkout() {
   const { items, total, totalProductos, costoEnvio, zonaEnvio, pagar } = useCarrito()
@@ -15,6 +16,7 @@ export default function Checkout() {
     telefono: '',
     calle: '',
     numero: '',
+    pisoDepto: '',
     ciudad: '',
     codigoPostal: '',
     notas: '',
@@ -91,6 +93,8 @@ export default function Checkout() {
         <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${total}</p>
       </div>
 
+      <SelectorEnvio />
+
       <form onSubmit={handleSubmit} style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <label>
           Nombre completo *
@@ -124,6 +128,10 @@ export default function Checkout() {
                 <input name="numero" value={datos.numero} onChange={handleChange} style={inputStyle} />
               </label>
             </div>
+            <label>
+              Piso / Depto (opcional)
+              <input name="pisoDepto" value={datos.pisoDepto} onChange={handleChange} style={inputStyle} placeholder="Ej: 3° B" />
+            </label>
             <div style={{ display: 'flex', gap: '10px' }}>
               <label style={{ flex: 1 }}>
                 Ciudad *

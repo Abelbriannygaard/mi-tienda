@@ -1,7 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import ProductoCard from './ProductoCard'
 import CarritoIcono from './CarritoIcono'
-import SelectorEnvio from './SelectorEnvio'
 
 export default async function Home() {
   const { data: productos } = await supabase.from('productos').select('*')
@@ -10,7 +9,6 @@ export default async function Home() {
     <main style={{ padding: '40px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Mi Tienda</h1>
-        <SelectorEnvio />
         <CarritoIcono />
       </div>
       <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '20px' }}>

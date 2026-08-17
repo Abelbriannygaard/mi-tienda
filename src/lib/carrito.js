@@ -72,6 +72,20 @@ export function CarritoProvider({ children }) {
     )
   }
 
+  function actualizarCantidad(id, varianteId, nuevaCantidad) {
+    if (nuevaCantidad < 1) {
+      quitarDelCarrito(id, varianteId)
+      return
+    }
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === id && item.variante_id === varianteId
+          ? { ...item, cantidad: nuevaCantidad }
+          : item
+      )
+    )
+  }
+
   function vaciarCarrito() {
     setItems([])
     setZonaEnvio(null)
@@ -104,6 +118,7 @@ export function CarritoProvider({ children }) {
         items,
         agregarAlCarrito,
         quitarDelCarrito,
+        actualizarCantidad,
         vaciarCarrito,
         total,
         totalProductos,
