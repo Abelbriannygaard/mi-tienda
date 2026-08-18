@@ -21,7 +21,7 @@ export default function Header() {
         <img
           src="/logo.png"
           alt="dimedetiambos"
-          style={{ height: '64px', width: 'auto', objectFit: 'contain' }}
+          style={{ height: '72px', width: 'auto', objectFit: 'contain' }}
         />
         <span
           style={{
