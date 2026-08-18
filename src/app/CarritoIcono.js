@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useCarrito } from '@/lib/carrito'
+import SelectorEnvio from './checkout/SelectorEnvio'
 
 export default function CarritoIcono() {
   const {
@@ -225,6 +226,10 @@ export default function CarritoIcono() {
                     <span>Total</span>
                     <span>${total}</span>
                   </div>
+                </div>
+
+                <div style={{ marginTop: '14px' }}>
+                  <SelectorEnvio />
                 </div>
 
                 <Link href="/checkout" style={{ marginTop: 'auto' }}>
