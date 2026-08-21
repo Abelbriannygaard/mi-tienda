@@ -99,20 +99,22 @@ export async function POST(req) {
       )
     }
 
-    const DIAS_CONFECCION = 12
+    const DIAS_CONFECCION_MIN = 7
+    const DIAS_CONFECCION_MAX = 12
 
     const rates = todasLasCotizaciones
       .map((rate) => {
         const matches = rate.deliveryEstimate?.match(/\d+/g)
         const transitDays = matches ? parseInt(matches[matches.length - 1]) : 5
-        const totalDays = transitDays + DIAS_CONFECCION
+        const totalDaysMin = transitDays + DIAS_CONFECCION_MIN
+        const totalDaysMax = transitDays + DIAS_CONFECCION_MAX
 
         return {
           id: `${rate.carrierId || rate.carrier}-${rate.serviceId || rate.service}`,
           carrier: rate.carrierDescription || rate.carrier,
           service: rate.serviceDescription || rate.service || 'Estándar',
           price: Math.round(rate.totalPrice || 0),
-          deliveryText: `Llega en aprox. ${totalDays} días corridos (incluye 12 días de confección)`,
+          deliveryText: `Llega en aprox. ${totalDaysMin} a ${totalDaysMax} días corridos (incluye 7 a 12 días de confección)`,
         }
       })
       .sort((a, b) => a.price - b.price)
