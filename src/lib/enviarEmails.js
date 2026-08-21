@@ -23,7 +23,7 @@ export async function enviarEmailConfirmacionCliente(pedido) {
   if (!pedido.comprador_email) return
 
   try {
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: process.env.EMAIL_FROM,
       to: pedido.comprador_email,
       subject: '¡Gracias por tu compra! - dimedetiambos',
@@ -47,6 +47,11 @@ export async function enviarEmailConfirmacionCliente(pedido) {
         </div>
       `,
     })
+      if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email enviado OK:', data)
+    }
   } catch (error) {
     console.error('Error al enviar email de confirmación al cliente:', error)
   }
@@ -57,7 +62,7 @@ export async function enviarEmailNotificacionVenta(pedido) {
   if (!emailAdmin) return
 
   try {
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: process.env.EMAIL_FROM,
       to: emailAdmin,
       subject: `Nueva venta 💰 - $${pedido.total}`,
@@ -85,6 +90,11 @@ export async function enviarEmailNotificacionVenta(pedido) {
         </div>
       `,
     })
+      if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email enviado OK:', data)
+    }
   } catch (error) {
     console.error('Error al enviar email de notificación de venta:', error)
   }
