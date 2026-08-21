@@ -26,6 +26,7 @@ export async function enviarEmailConfirmacionCliente(pedido) {
     const { data, error } = await resend.emails.send({
       from: process.env.EMAIL_FROM,
       to: pedido.comprador_email,
+      replyTo: 'abel.nygaard@gmail.com',
       subject: '¡Gracias por tu compra! - dimedetiambos',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
