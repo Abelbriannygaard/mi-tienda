@@ -93,7 +93,7 @@ export default function Checkout() {
         <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${total}</p>
       </div>
 
-      <SelectorEnvio />
+      <SelectorEnvio codigoPostal={datos.codigoPostal} />
 
       <form onSubmit={handleSubmit} style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <label>

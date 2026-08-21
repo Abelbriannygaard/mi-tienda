@@ -1,5 +1,6 @@
 import { MercadoPagoConfig, Payment } from 'mercadopago'
 import { createClient } from '@supabase/supabase-js'
+import { enviarEmailConfirmacionCliente, enviarEmailNotificacionVenta } from './enviarEmails'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
@@ -54,6 +55,34 @@ export async function guardarPedido(paymentId) {
   if (error) {
     console.error('Error al guardar el pedido:', error)
     throw new Error('Error al guardar el pedido')
+  }
+
+  // Enviar emails solo si el pago quedó aprobado (evita mails por pagos pendientes/rechazados)
+  if (pago.status === 'approved') {
+    const pedidoGuardado = {
+      cliente_nombre: datosCliente.nombre || null,
+      comprador_email: datosCliente.email || pago.payer?.email || null,
+      cliente_telefono: datosCliente.telefono || null,
+      cliente_dni: datosCliente.dni || null,
+      items,
+      total: pago.transaction_amount,
+      zona_envio: zonaEnvio?.nombre || null,
+      costo_envio: zonaEnvio?.costo || 0,
+      direccion: datosCliente.calle
+        ? {
+            calle: datosCliente.calle,
+            numero: datosCliente.numero,
+            pisoDepto: datosCliente.pisoDepto || datosCliente.piso_depto || null,
+            ciudad: datosCliente.ciudad,
+            codigoPostal: datosCliente.codigoPostal || datosCliente.codigo_postal || null,
+          }
+        : null,
+      notas: datosCliente.notas || null,
+      mercadopago_payment_id: String(paymentId),
+    }
+
+    await enviarEmailConfirmacionCliente(pedidoGuardado)
+    await enviarEmailNotificacionVenta(pedidoGuardado)
   }
 
   return pago
