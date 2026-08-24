@@ -46,7 +46,7 @@ export default function Checkout() {
     return null
   }
 
-  <  async function handleSubmit(e) {
+    async function handleSubmit(e) {
     e.preventDefault()
 
     if (items.length === 0) {
