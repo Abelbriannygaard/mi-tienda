@@ -5,9 +5,37 @@ const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
 })
 
+async function verificarRecaptcha(token) {
+  if (!token) return false
+
+  try {
+    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${token}`,
+    })
+
+    const data = await res.json()
+
+    // score va de 0 (bot) a 1 (humano). 0.5 es el umbral recomendado por Google.
+    return data.success && data.score >= 0.5 && data.action === 'checkout'
+  } catch (error) {
+    console.error('Error al verificar reCAPTCHA:', error)
+    return false
+  }
+}
+
 export async function POST(request) {
   try {
-    const { items, zonaEnvio, datosCliente } = await request.json()
+    const { items, zonaEnvio, datosCliente, recaptchaToken } = await request.json()
+
+    const recaptchaValido = await verificarRecaptcha(recaptchaToken)
+    if (!recaptchaValido) {
+      return NextResponse.json(
+        { error: 'No pudimos verificar que sos una persona real. Recargá la página e intentá de nuevo.' },
+        { status: 400 }
+      )
+    }
 
     const preference = new Preference(client)
 

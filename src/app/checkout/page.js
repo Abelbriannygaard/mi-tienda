@@ -1,5 +1,7 @@
 'use client'
 
+import Script from 'next/script'
+
 import { useState } from 'react'
 import { useCarrito } from '@/lib/carrito'
 import { useRouter } from 'next/navigation'
@@ -44,7 +46,7 @@ export default function Checkout() {
     return null
   }
 
-  async function handleSubmit(e) {
+  <  async function handleSubmit(e) {
     e.preventDefault()
 
     if (items.length === 0) {
@@ -60,12 +62,21 @@ export default function Checkout() {
 
     setEnviando(true)
     try {
-      await pagar(datos)
+      const token = await new Promise((resolve, reject) => {
+        window.grecaptcha.ready(() => {
+          window.grecaptcha
+            .execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'checkout' })
+            .then(resolve)
+            .catch(reject)
+        })
+      })
+
+      await pagar(datos, token)
     } catch (err) {
       alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
       setEnviando(false)
     }
-  }
+  }>
 
   if (items.length === 0) {
     return (
@@ -80,8 +91,8 @@ export default function Checkout() {
 
   return (
     <main style={{ padding: '40px', maxWidth: '600px', margin: '0 auto' }}>
+      <Script src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`} />
       <h1>Finalizar compra</h1>
-
       <div style={{ backgroundColor: '#f7f7f7', padding: '16px', borderRadius: '8px', marginTop: '20px' }}>
         <h3>Resumen del pedido</h3>
         {items.map((item) => (

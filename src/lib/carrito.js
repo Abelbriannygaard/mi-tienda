@@ -91,11 +91,11 @@ export function CarritoProvider({ children }) {
     setZonaEnvio(null)
   }
 
-  async function pagar(datosCliente) {
+  async function pagar(datosCliente, recaptchaToken) {
     const respuesta = await fetch('/api/crear-preferencia', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, zonaEnvio, datosCliente }),
+      body: JSON.stringify({ items, zonaEnvio, datosCliente, recaptchaToken }),
     })
 
     const datos = await respuesta.json()
