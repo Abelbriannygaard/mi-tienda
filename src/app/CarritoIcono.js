@@ -47,7 +47,7 @@ export default function CarritoIcono() {
               top: 0,
               left: 0,
               width: '100vw',
-              height: '100vh',
+              height: '100dvh',
               backgroundColor: 'rgba(0, 0, 0, 0.4)',
               zIndex: 99,
             }}
@@ -232,7 +232,17 @@ export default function CarritoIcono() {
                   <SelectorEnvio />
                 </div>
 
-                <Link href="/checkout" style={{ marginTop: 'auto' }}>
+                <Link
+                  href="/checkout"
+                  style={{
+                    marginTop: 'auto',
+                    position: 'sticky',
+                    bottom: 0,
+                    backgroundColor: 'white',
+                    paddingTop: '10px',
+                    zIndex: 1,
+                  }}
+                >
                   <button
                     onClick={() => setAbierto(false)}
                     style={{

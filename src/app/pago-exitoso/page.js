@@ -19,7 +19,8 @@ export default async function PagoExitoso({ searchParams }) {
     <div style={{ padding: '40px', textAlign: 'center' }}>
       <h1 style={{ color: '#16a34a', fontSize: '28px' }}>✅ ¡Gracias por tu compra!</h1>
       <p style={{ marginTop: '12px', fontSize: '16px' }}>
-        Tu pago fue aprobado correctamente. En breve nos comunicamos para coordinar el envío.
+        Tu pago fue aprobado correctamente. Te enviamos un email con el resumen de tu pedido. 
+        Cuando lo despachemos, vas a recibir otro email con el número de seguimiento para rastrear tu envío.
       </p>
       <a href="/" style={{ display: 'inline-block', marginTop: '24px', color: '#009ee3' }}>
         ← Volver a la tienda
