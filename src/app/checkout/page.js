@@ -76,7 +76,7 @@ export default function Checkout() {
       alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
       setEnviando(false)
     }
-  }>
+  }
 
   if (items.length === 0) {
     return (
