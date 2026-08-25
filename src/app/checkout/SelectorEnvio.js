@@ -150,6 +150,8 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
                       id: idUnico,
                       nombre: `${opcion.carrier} - ${opcion.service}`,
                       costo: opcion.price,
+                      envioCarrier: opcion.carrierSlug,
+                      envioServiceCode: opcion.serviceCode,
                     })
                   }
                   style={{ marginRight: '10px' }}

@@ -114,6 +114,10 @@ export async function POST(req) {
 
         return {
           id: `${rate.carrierId || rate.carrier}-${rate.serviceId || rate.service}`,
+          carrierSlug: rate.carrier,
+          carrierId: rate.carrierId || null,
+          serviceId: rate.serviceId || null,
+          serviceCode: rate.service || null,
           carrier: rate.carrierDescription || rate.carrier,
           service: rate.serviceDescription || rate.service || 'Estándar',
           price: Math.round(rate.totalPrice || 0),
