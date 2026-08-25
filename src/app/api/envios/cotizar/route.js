@@ -55,6 +55,7 @@ async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
     try {
       data = JSON.parse(responseText)
     } catch {
+      console.error(`Respuesta no-JSON de ${carrier}:`, responseText.slice(0, 300))
       return []
     }
 
