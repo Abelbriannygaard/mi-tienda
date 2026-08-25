@@ -84,6 +84,11 @@ export async function POST(request) {
         type: 1,
         service: pedido.envio_service_code,
       },
+      settings: {
+        printFormat: 'PDF',
+        printSize: 'STOCK_4X6',
+        currency: 'ARS',
+      },
     }
 
     const res = await fetch('https://api-test.envia.com/ship/generate/', {
