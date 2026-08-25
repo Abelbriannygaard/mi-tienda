@@ -59,11 +59,13 @@ async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
     }
 
     if (!res.ok || data.meta === 'error' || !data.data || data.data.length === 0) {
+      console.error(`Error con carrier ${carrier}:`, JSON.stringify(data))
       return []
     }
 
     return data.data
-  } catch {
+  } catch (err) {
+    console.error(`Excepción con carrier ${carrier}:`, err.message)
     return []
   }
 }
