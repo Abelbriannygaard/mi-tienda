@@ -112,8 +112,15 @@ export async function POST(request) {
     console.log('=== RESPUESTA GENERAR ETIQUETA ===', JSON.stringify(data, null, 2))
 
     if (!res.ok || data.meta === 'error') {
+      const mensajeOriginal = data.error?.message || ''
+      const esFaltaSucursal = mensajeOriginal.toLowerCase().includes('branch')
+
       return NextResponse.json(
-        { error: data.error?.message || 'Error al generar la etiqueta en Envia.' },
+        {
+          error: esFaltaSucursal
+            ? 'Este envío es "a Sucursal" — todavía no soportamos elegir la sucursal automáticamente. Generá esta etiqueta a mano desde shipping.envia.com.'
+            : mensajeOriginal || 'Error al generar la etiqueta en Envia.',
+        },
         { status: 400 }
       )
     }
