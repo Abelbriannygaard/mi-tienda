@@ -4,7 +4,7 @@ const CARRIERS = ['correoArgentino', 'andreani', 'urbano', 'oca', 'dpd']
 
 async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
   try {
-    const res = await fetch('https://api-test.envia.com/ship/rate', {
+    const res = await fetch('https://api.envia.com/ship/rate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -76,7 +76,7 @@ export async function POST(req) {
       return NextResponse.json({ success: false, error: 'Código postal requerido' }, { status: 400 })
     }
 
-    const apiKey = process.env.ENVIA_TOKEN
+    const apiKey = process.env.ENVIA_API_KEY
     if (!apiKey) {
       return NextResponse.json({ success: false, error: 'Falta ENVIA_TOKEN en .env.local' }, { status: 500 })
     }
