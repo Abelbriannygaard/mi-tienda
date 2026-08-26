@@ -39,7 +39,15 @@ export async function POST(request) {
       )
     }
 
-    const totalItems = (pedido.items || []).reduce((acc, item) => acc + (item.cantidad || 1), 0) || 1
+    const itemsSinEnvio = (pedido.items || []).filter(
+  (item) => !item.nombre?.toLowerCase().startsWith('envío')
+)
+
+const totalItems =
+  itemsSinEnvio.reduce(
+    (acc, item) => acc + (parseInt(item.cantidad, 10) || 1),
+    0
+  ) || 1
     const weight = totalItems * 0.8
     const height = 8 * Math.min(totalItems, 3)
 
