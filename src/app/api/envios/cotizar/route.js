@@ -52,14 +52,23 @@ async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
 
     const responseText = await res.text()
     let data = {}
+
     try {
       data = JSON.parse(responseText)
     } catch {
-      console.error(`Respuesta no-JSON de ${carrier}:`, responseText.slice(0, 300))
+      console.error(
+        `Respuesta no-JSON de ${carrier}:`,
+        responseText.slice(0, 300)
+      )
       return []
     }
 
-    if (!res.ok || data.meta === 'error' || !data.data || data.data.length === 0) {
+    if (
+      !res.ok ||
+      data.meta === 'error' ||
+      !data.data ||
+      data.data.length === 0
+    ) {
       console.error(`Error con carrier ${carrier}:`, JSON.stringify(data))
       return []
     }
@@ -76,28 +85,64 @@ export async function POST(req) {
     const { postalCode, items } = await req.json()
 
     if (!postalCode) {
-      return NextResponse.json({ success: false, error: 'Código postal requerido' }, { status: 400 })
+      return NextResponse.json(
+        { success: false, error: 'Código postal requerido' },
+        { status: 400 }
+      )
     }
 
     const apiKey = process.env.ENVIA_API_KEY
+
     if (!apiKey) {
-      return NextResponse.json({ success: false, error: 'Falta ENVIA_TOKEN en .env.local' }, { status: 500 })
+      return NextResponse.json(
+        { success: false, error: 'Falta ENVIA_TOKEN en .env.local' },
+        { status: 500 }
+      )
     }
 
-    const totalItems = items?.reduce((acc, item) => acc + (item.cantidad || 1), 0) || 1
+    const totalItems =
+      items?.reduce(
+        (acc, item) => acc + (parseInt(item.cantidad, 10) || 1),
+        0
+      ) || 1
+
     const weight = totalItems * 0.8
     const height = 8 * Math.min(totalItems, 3)
 
     // Consultar todos los carriers en paralelo
     const resultadosPorCarrier = await Promise.all(
-      CARRIERS.map((carrier) => cotizarConCarrier(carrier, apiKey, postalCode, weight, height))
+      CARRIERS.map((carrier) =>
+        cotizarConCarrier(carrier, apiKey, postalCode, weight, height)
+      )
     )
 
-    const todasLasCotizaciones = resultadosPorCarrier.flat()
+    const todasLasCotizaciones = resultadosPorCarrier
+      .flat()
+      .filter((rate) => {
+        const serviceCode = String(rate.service || '').toLowerCase()
+        const serviceDescription = String(
+          rate.serviceDescription || ''
+        ).toLowerCase()
+
+        // Solo servicios a domicilio.
+        // Excluye cualquier servicio que indique sucursal/punto/branch.
+        return (
+          !serviceCode.includes('sucursal') &&
+          !serviceCode.includes('branch') &&
+          !serviceCode.includes('pickup') &&
+          !serviceDescription.includes('sucursal') &&
+          !serviceDescription.includes('branch') &&
+          !serviceDescription.includes('pickup')
+        )
+      })
 
     if (todasLasCotizaciones.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'No se encontraron opciones de envío para este Código Postal.' },
+        {
+          success: false,
+          error:
+            'No se encontraron opciones de envío a domicilio para este Código Postal.',
+        },
         { status: 400 }
       )
     }
@@ -108,7 +153,10 @@ export async function POST(req) {
     const rates = todasLasCotizaciones
       .map((rate) => {
         const matches = rate.deliveryEstimate?.match(/\d+/g)
-        const transitDays = matches ? parseInt(matches[matches.length - 1]) : 5
+        const transitDays = matches
+          ? parseInt(matches[matches.length - 1], 10)
+          : 5
+
         const totalDaysMin = transitDays + DIAS_CONFECCION_MIN
         const totalDaysMax = transitDays + DIAS_CONFECCION_MAX
 
@@ -119,16 +167,27 @@ export async function POST(req) {
           serviceId: rate.serviceId || null,
           serviceCode: rate.service || null,
           carrier: rate.carrierDescription || rate.carrier,
-          service: rate.serviceDescription || rate.service || 'Estándar',
+          service:
+            rate.serviceDescription || rate.service || 'Estándar',
           price: Math.round(rate.totalPrice || 0),
           deliveryText: `Llega en aprox. ${totalDaysMin} a ${totalDaysMax} días corridos (incluye 7 a 12 días de confección)`,
         }
       })
       .sort((a, b) => a.price - b.price)
 
-    return NextResponse.json({ success: true, rates })
+    return NextResponse.json({
+      success: true,
+      rates,
+    })
   } catch (error) {
     console.error('Error servidor cotización:', error)
-    return NextResponse.json({ success: false, error: 'Error interno del servidor' }, { status: 500 })
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Error interno del servidor',
+      },
+      { status: 500 }
+    )
   }
 }
