@@ -11,7 +11,10 @@ export async function POST(request) {
     const { pedidoId } = await request.json()
 
     if (!pedidoId) {
-      return NextResponse.json({ error: 'Falta el ID del pedido' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Falta el ID del pedido' },
+        { status: 400 }
+      )
     }
 
     // Traer el pedido completo desde Supabase
@@ -22,38 +25,43 @@ export async function POST(request) {
       .single()
 
     if (errorPedido || !pedido) {
-      return NextResponse.json({ error: 'Pedido no encontrado' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Pedido no encontrado' },
+        { status: 404 }
+      )
     }
 
     if (!pedido.envio_carrier || !pedido.envio_service_code) {
       return NextResponse.json(
-        { error: 'Este pedido no tiene guardado el carrier/servicio de envío (pedidos antiguos no lo tienen).' },
+        {
+          error:
+            'Este pedido no tiene guardado el carrier/servicio de envío (pedidos antiguos no lo tienen).',
+        },
         { status: 400 }
       )
     }
 
     if (!pedido.direccion) {
       return NextResponse.json(
-        { error: 'Este pedido no tiene dirección de envío (puede ser retiro en persona).' },
+        {
+          error:
+            'Este pedido no tiene dirección de envío (puede ser retiro en persona).',
+        },
         { status: 400 }
       )
     }
 
     const itemsSinEnvio = (pedido.items || []).filter(
-  (item) => !item.nombre?.toLowerCase().startsWith('envío')
-)
+      (item) => !item.nombre?.toLowerCase().startsWith('envío')
+    )
 
-const totalItems =
-  itemsSinEnvio.reduce(
-    (acc, item) => acc + (parseInt(item.cantidad, 10) || 1),
-    0
-  ) || 1
+    const totalItems =
+      itemsSinEnvio.reduce(
+        (acc, item) => acc + (parseInt(item.cantidad, 10) || 1),
+        0
+      ) || 1
+
     const weight = totalItems * 0.8
-    console.log('=== CALCULO PESO ===')
-console.log('items originales:', pedido.items)
-console.log('items sin envío:', itemsSinEnvio)
-console.log('totalItems:', totalItems)
-console.log('weight:', weight)
     const height = 8 * Math.min(totalItems, 3)
 
     const payload = {
@@ -73,7 +81,8 @@ console.log('weight:', weight)
       destination: {
         name: pedido.cliente_nombre || 'Cliente',
         company: 'Particular',
-        email: pedido.comprador_email || 'sin-email@dimedetiambos.com.ar',
+        email:
+          pedido.comprador_email || 'sin-email@dimedetiambos.com.ar',
         phone: pedido.cliente_telefono || '1100000000',
         street: pedido.direccion.calle,
         number: pedido.direccion.numero,
@@ -88,7 +97,11 @@ console.log('weight:', weight)
           content: 'Indumentaria Medica',
           amount: 1,
           type: 'box',
-          dimensions: { length: 18, width: 20, height },
+          dimensions: {
+            length: 18,
+            width: 20,
+            height,
+          },
           weight,
         },
       ],
@@ -104,29 +117,45 @@ console.log('weight:', weight)
       },
     }
 
-    const res = await fetch('https://api-test.envia.com/ship/generate/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.ENVIA_TOKEN.trim()}`,
-      },
-      body: JSON.stringify(payload),
-    })
+    const res = await fetch(
+      'https://api-test.envia.com/ship/generate/',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.ENVIA_TOKEN.trim()}`,
+        },
+        body: JSON.stringify(payload),
+      }
+    )
 
     const responseText = await res.text()
     let data = {}
+
     try {
       data = JSON.parse(responseText)
     } catch {
-      console.error('Respuesta no-JSON al generar etiqueta:', responseText.slice(0, 500))
-      return NextResponse.json({ error: 'Envia no devolvió una respuesta válida.' }, { status: 500 })
+      console.error(
+        'Respuesta no-JSON al generar etiqueta:',
+        responseText.slice(0, 500)
+      )
+
+      return NextResponse.json(
+        { error: 'Envia no devolvió una respuesta válida.' },
+        { status: 500 }
+      )
     }
 
-    console.log('=== RESPUESTA GENERAR ETIQUETA ===', JSON.stringify(data, null, 2))
+    console.log(
+      '=== RESPUESTA GENERAR ETIQUETA ===',
+      JSON.stringify(data, null, 2)
+    )
 
     if (!res.ok || data.meta === 'error') {
       const mensajeOriginal = data.error?.message || ''
-      const esFaltaSucursal = mensajeOriginal.toLowerCase().includes('branch')
+      const esFaltaSucursal = mensajeOriginal
+        .toLowerCase()
+        .includes('branch')
 
       return NextResponse.json(
         {
@@ -138,7 +167,6 @@ console.log('weight:', weight)
       )
     }
 
-    // Guardamos toda la data cruda por ahora, hasta confirmar los nombres exactos de los campos
     const resultado = data.data?.[0] || {}
 
     const { error: errorGuardar } = await supabaseAdmin
@@ -151,12 +179,22 @@ console.log('weight:', weight)
       .eq('id', pedidoId)
 
     if (errorGuardar) {
-      console.error('Error al guardar etiqueta en Supabase:', errorGuardar)
+      console.error(
+        'Error al guardar etiqueta en Supabase:',
+        errorGuardar
+      )
     }
 
-    return NextResponse.json({ success: true, data })
+    return NextResponse.json({
+      success: true,
+      data,
+    })
   } catch (error) {
     console.error('Error al generar etiqueta:', error)
-    return NextResponse.json({ error: 'Error interno al generar la etiqueta' }, { status: 500 })
+
+    return NextResponse.json(
+      { error: 'Error interno al generar la etiqueta' },
+      { status: 500 }
+    )
   }
 }
