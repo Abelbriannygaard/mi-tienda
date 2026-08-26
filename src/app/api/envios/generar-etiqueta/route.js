@@ -49,6 +49,11 @@ const totalItems =
     0
   ) || 1
     const weight = totalItems * 0.8
+    console.log('=== CALCULO PESO ===')
+console.log('items originales:', pedido.items)
+console.log('items sin envío:', itemsSinEnvio)
+console.log('totalItems:', totalItems)
+console.log('weight:', weight)
     const height = 8 * Math.min(totalItems, 3)
 
     const payload = {
