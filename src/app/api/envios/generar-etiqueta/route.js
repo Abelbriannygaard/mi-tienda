@@ -17,7 +17,6 @@ export async function POST(request) {
       )
     }
 
-    // Traer el pedido completo desde Supabase
     const { data: pedido, error: errorPedido } = await supabaseAdmin
       .from('pedidos')
       .select('*')
@@ -41,12 +40,7 @@ export async function POST(request) {
       )
     }
 
-    // Detectar si el servicio es a sucursal
-    const esSucursal = pedido.envio_service_code === 'standard_suc'
-
-    // Para domicilio necesitamos la dirección del comprador.
-    // Para sucursal utilizamos el branchCode seleccionado.
-    if (!esSucursal && !pedido.direccion) {
+    if (!pedido.direccion) {
       return NextResponse.json(
         {
           error:
@@ -55,6 +49,8 @@ export async function POST(request) {
         { status: 400 }
       )
     }
+
+    const esSucursal = pedido.envio_service_code === 'standard_suc'
 
     if (esSucursal && !pedido.envio_branch_code) {
       return NextResponse.json(
@@ -66,7 +62,6 @@ export async function POST(request) {
       )
     }
 
-    // Calcular cantidad y peso
     const itemsSinEnvio = (pedido.items || []).filter(
       (item) => !item.nombre?.toLowerCase().startsWith('envío')
     )
@@ -77,13 +72,11 @@ export async function POST(request) {
         0
       ) || 1
 
-    // 800 gramos por producto
     const weight = totalItems * 0.8
-
-    // Altura del paquete
     const height = 8 * Math.min(totalItems, 3)
 
-    // Datos del destino
+    // Envia exige los datos de dirección incluso cuando el envío es a sucursal.
+    // En sucursal agregamos además el branchCode elegido.
     const destination = {
       name: pedido.cliente_nombre || 'Cliente',
       company: 'Particular',
@@ -91,22 +84,19 @@ export async function POST(request) {
         pedido.comprador_email ||
         'sin-email@dimedetiambos.com.ar',
       phone: pedido.cliente_telefono || '1100000000',
+      street: pedido.direccion.calle,
+      number: pedido.direccion.numero,
+      district: pedido.direccion.ciudad,
+      city: pedido.direccion.ciudad,
+      state: 'B',
+      country: 'AR',
+      postalCode: pedido.direccion.codigoPostal,
 
-      // Para sucursal enviamos el código de sucursal seleccionado.
-      // Para domicilio no se envía branchCode.
       ...(esSucursal
         ? {
             branchCode: pedido.envio_branch_code,
           }
-        : {
-            street: pedido.direccion.calle,
-            number: pedido.direccion.numero,
-            district: pedido.direccion.ciudad,
-            city: pedido.direccion.ciudad,
-            state: 'B',
-            country: 'AR',
-            postalCode: pedido.direccion.codigoPostal,
-          }),
+        : {}),
     }
 
     const payload = {
@@ -223,7 +213,6 @@ export async function POST(request) {
 
     const resultado = data.data?.[0] || {}
 
-    // Guardar datos de la etiqueta en Supabase
     const { error: errorGuardar } = await supabaseAdmin
       .from('pedidos')
       .update({
