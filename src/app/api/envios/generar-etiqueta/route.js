@@ -126,11 +126,13 @@ export async function POST(request) {
     }
 
     // Guardamos toda la data cruda por ahora, hasta confirmar los nombres exactos de los campos
+    const resultado = data.data?.[0] || {}
+
     const { error: errorGuardar } = await supabaseAdmin
       .from('pedidos')
       .update({
-        tracking_envio: data.trackingNumber || data.tracking_number || data.tracking || null,
-        etiqueta_url: data.label || data.labelUrl || data.pdf || data.url || null,
+        tracking_envio: resultado.trackingNumber || null,
+        etiqueta_url: resultado.label || null,
         estado_envio: 'etiqueta_generada',
       })
       .eq('id', pedidoId)
