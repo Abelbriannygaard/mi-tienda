@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-const CARRIERS = ['correoArgentino', 'andreani', 'urbano', 'oca', 'dpd']
+const CARRIERS = ['correoArgentino', 'andreani', 'urbano', 'oca']
 
 async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
   try {
@@ -124,8 +124,7 @@ export async function POST(req) {
           rate.serviceDescription || ''
         ).toLowerCase()
 
-        // Solo servicios a domicilio.
-        // Excluye cualquier servicio que indique sucursal/punto/branch.
+        // Solo servicios a domicilio y a sucursal
         return (
           !serviceCode.includes('sucursal') &&
           !serviceCode.includes('branch') &&
@@ -167,12 +166,14 @@ export async function POST(req) {
           serviceId: rate.serviceId || null,
           serviceCode: rate.service || null,
           carrier: rate.carrierDescription || rate.carrier,
-          service:
-            rate.serviceDescription || rate.service || 'Estándar',
+          service: rate.serviceDescription || rate.service || 'Estándar',
           price: Math.round(rate.totalPrice || 0),
           deliveryText: `Llega en aprox. ${totalDaysMin} a ${totalDaysMax} días corridos (incluye 7 a 12 días de confección)`,
+          branches: (rate.branches || []).map((b) => ({
+            branchCode: b.branch_code,
+            direccion: `${b.reference || ''} - ${b.address?.address || ''}, ${b.address?.city || ''}`.trim(),
+          })),
         }
-      })
       .sort((a, b) => a.price - b.price)
 
     return NextResponse.json({

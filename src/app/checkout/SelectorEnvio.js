@@ -152,6 +152,7 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
                       costo: opcion.price,
                       envioCarrier: opcion.carrierSlug,
                       envioServiceCode: opcion.serviceCode,
+                      envioBranchCode: opcion.branches?.[0]?.branchCode || null,
                     })
                   }
                   style={{ marginRight: '10px' }}
@@ -161,6 +162,30 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
                 <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
                   {opcion.deliveryText}
                 </small>
+
+                {estaSeleccionado && opcion.branches?.length > 0 && (
+                  <div style={{ marginTop: '10px', marginLeft: '24px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>
+                      Elegí la sucursal:
+                    </label>
+                    <select
+                      value={zonaEnvio?.envioBranchCode || ''}
+                      onChange={(e) =>
+                        setZonaEnvio({
+                          ...zonaEnvio,
+                          envioBranchCode: e.target.value,
+                        })
+                      }
+                      style={{ padding: '6px', borderRadius: '6px', border: '1px solid #ccc', width: '100%' }}
+                    >
+                      {opcion.branches.map((b) => (
+                        <option key={b.branchCode} value={b.branchCode}>
+                          {b.direccion}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </label>
             )
           })}

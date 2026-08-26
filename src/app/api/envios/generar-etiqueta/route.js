@@ -78,11 +78,10 @@ export async function POST(request) {
         country: 'AR',
         postalCode: '1650',
       },
-      destination: {
+            destination: {
         name: pedido.cliente_nombre || 'Cliente',
         company: 'Particular',
-        email:
-          pedido.comprador_email || 'sin-email@dimedetiambos.com.ar',
+        email: pedido.comprador_email || 'sin-email@dimedetiambos.com.ar',
         phone: pedido.cliente_telefono || '1100000000',
         street: pedido.direccion.calle,
         number: pedido.direccion.numero,
@@ -91,6 +90,7 @@ export async function POST(request) {
         state: 'B',
         country: 'AR',
         postalCode: pedido.direccion.codigoPostal,
+        ...(pedido.envio_branch_code ? { branchCode: pedido.envio_branch_code } : {}),
       },
       packages: [
         {
@@ -151,18 +151,9 @@ export async function POST(request) {
       JSON.stringify(data, null, 2)
     )
 
-    if (!res.ok || data.meta === 'error') {
-      const mensajeOriginal = data.error?.message || ''
-      const esFaltaSucursal = mensajeOriginal
-        .toLowerCase()
-        .includes('branch')
-
+        if (!res.ok || data.meta === 'error') {
       return NextResponse.json(
-        {
-          error: esFaltaSucursal
-            ? 'Este envío es "a Sucursal" — todavía no soportamos elegir la sucursal automáticamente. Generá esta etiqueta a mano desde shipping.envia.com.'
-            : mensajeOriginal || 'Error al generar la etiqueta en Envia.',
-        },
+        { error: data.error?.message || 'Error al generar la etiqueta en Envia.' },
         { status: 400 }
       )
     }

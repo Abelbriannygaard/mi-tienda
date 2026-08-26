@@ -49,6 +49,7 @@ export async function guardarPedido(paymentId) {
         costo_envio: zonaEnvio?.costo || 0,
         envio_carrier: zonaEnvio?.envioCarrier || zonaEnvio?.envio_carrier || null,
         envio_service_code: zonaEnvio?.envioServiceCode || zonaEnvio?.envio_service_code || null,
+        envio_branch_code: zonaEnvio?.envioBranchCode || zonaEnvio?.envio_branch_code || null,
         notas: datosCliente.notas || null,
       },
       { onConflict: 'mercadopago_payment_id' }
