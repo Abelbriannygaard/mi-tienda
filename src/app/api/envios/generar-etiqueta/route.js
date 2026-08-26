@@ -41,7 +41,12 @@ export async function POST(request) {
       )
     }
 
-    if (!pedido.direccion) {
+    // Detectar si el servicio es a sucursal
+    const esSucursal = pedido.envio_service_code === 'standard_suc'
+
+    // Para domicilio necesitamos la dirección del comprador.
+    // Para sucursal utilizamos el branchCode seleccionado.
+    if (!esSucursal && !pedido.direccion) {
       return NextResponse.json(
         {
           error:
@@ -51,6 +56,17 @@ export async function POST(request) {
       )
     }
 
+    if (esSucursal && !pedido.envio_branch_code) {
+      return NextResponse.json(
+        {
+          error:
+            'Este pedido es a sucursal pero no tiene guardado el código de sucursal.',
+        },
+        { status: 400 }
+      )
+    }
+
+    // Calcular cantidad y peso
     const itemsSinEnvio = (pedido.items || []).filter(
       (item) => !item.nombre?.toLowerCase().startsWith('envío')
     )
@@ -61,8 +77,37 @@ export async function POST(request) {
         0
       ) || 1
 
+    // 800 gramos por producto
     const weight = totalItems * 0.8
+
+    // Altura del paquete
     const height = 8 * Math.min(totalItems, 3)
+
+    // Datos del destino
+    const destination = {
+      name: pedido.cliente_nombre || 'Cliente',
+      company: 'Particular',
+      email:
+        pedido.comprador_email ||
+        'sin-email@dimedetiambos.com.ar',
+      phone: pedido.cliente_telefono || '1100000000',
+
+      // Para sucursal enviamos el código de sucursal seleccionado.
+      // Para domicilio no se envía branchCode.
+      ...(esSucursal
+        ? {
+            branchCode: pedido.envio_branch_code,
+          }
+        : {
+            street: pedido.direccion.calle,
+            number: pedido.direccion.numero,
+            district: pedido.direccion.ciudad,
+            city: pedido.direccion.ciudad,
+            state: 'B',
+            country: 'AR',
+            postalCode: pedido.direccion.codigoPostal,
+          }),
+    }
 
     const payload = {
       origin: {
@@ -78,20 +123,9 @@ export async function POST(request) {
         country: 'AR',
         postalCode: '1650',
       },
-            destination: {
-        name: pedido.cliente_nombre || 'Cliente',
-        company: 'Particular',
-        email: pedido.comprador_email || 'sin-email@dimedetiambos.com.ar',
-        phone: pedido.cliente_telefono || '1100000000',
-        street: pedido.direccion.calle,
-        number: pedido.direccion.numero,
-        district: pedido.direccion.ciudad,
-        city: pedido.direccion.ciudad,
-        state: 'B',
-        country: 'AR',
-        postalCode: pedido.direccion.codigoPostal,
-        ...(pedido.envio_branch_code ? { branchCode: pedido.envio_branch_code } : {}),
-      },
+
+      destination,
+
       packages: [
         {
           content: 'Indumentaria Medica',
@@ -105,17 +139,36 @@ export async function POST(request) {
           weight,
         },
       ],
+
       shipment: {
         carrier: pedido.envio_carrier,
         type: 1,
         service: pedido.envio_service_code,
       },
+
       settings: {
         printFormat: 'PDF',
         printSize: 'STOCK_4X6',
         currency: 'ARS',
       },
     }
+
+    console.log(
+      '=== GENERANDO ETIQUETA ===',
+      JSON.stringify(
+        {
+          pedidoId,
+          carrier: pedido.envio_carrier,
+          service: pedido.envio_service_code,
+          branchCode: pedido.envio_branch_code || null,
+          esSucursal,
+          weight,
+          totalItems,
+        },
+        null,
+        2
+      )
+    )
 
     const res = await fetch(
       'https://api-test.envia.com/ship/generate/',
@@ -130,6 +183,7 @@ export async function POST(request) {
     )
 
     const responseText = await res.text()
+
     let data = {}
 
     try {
@@ -141,7 +195,9 @@ export async function POST(request) {
       )
 
       return NextResponse.json(
-        { error: 'Envia no devolvió una respuesta válida.' },
+        {
+          error: 'Envia no devolvió una respuesta válida.',
+        },
         { status: 500 }
       )
     }
@@ -151,15 +207,23 @@ export async function POST(request) {
       JSON.stringify(data, null, 2)
     )
 
-        if (!res.ok || data.meta === 'error') {
+    if (!res.ok || data.meta === 'error') {
+      const mensaje =
+        data.error?.message ||
+        data.error?.description ||
+        'Error al generar la etiqueta en Envia.'
+
       return NextResponse.json(
-        { error: data.error?.message || 'Error al generar la etiqueta en Envia.' },
+        {
+          error: mensaje,
+        },
         { status: 400 }
       )
     }
 
     const resultado = data.data?.[0] || {}
 
+    // Guardar datos de la etiqueta en Supabase
     const { error: errorGuardar } = await supabaseAdmin
       .from('pedidos')
       .update({
@@ -184,7 +248,9 @@ export async function POST(request) {
     console.error('Error al generar etiqueta:', error)
 
     return NextResponse.json(
-      { error: 'Error interno al generar la etiqueta' },
+      {
+        error: 'Error interno al generar la etiqueta',
+      },
       { status: 500 }
     )
   }
