@@ -17,6 +17,7 @@ export async function POST(request) {
       )
     }
 
+    // Traer el pedido completo desde Supabase
     const { data: pedido, error: errorPedido } = await supabaseAdmin
       .from('pedidos')
       .select('*')
@@ -50,18 +51,6 @@ export async function POST(request) {
       )
     }
 
-    const esSucursal = pedido.envio_service_code === 'standard_suc'
-
-    if (esSucursal && !pedido.envio_branch_code) {
-      return NextResponse.json(
-        {
-          error:
-            'Este pedido es a sucursal pero no tiene guardado el código de sucursal.',
-        },
-        { status: 400 }
-      )
-    }
-
     const itemsSinEnvio = (pedido.items || []).filter(
       (item) => !item.nombre?.toLowerCase().startsWith('envío')
     )
@@ -75,8 +64,22 @@ export async function POST(request) {
     const weight = totalItems * 0.8
     const height = 8 * Math.min(totalItems, 3)
 
-    // Envia exige los datos de dirección incluso cuando el envío es a sucursal.
-    // En sucursal agregamos además el branchCode elegido.
+    // Determinar si el envío es a sucursal
+    const esSucursal = Boolean(pedido.envio_branch_code)
+
+    console.log('=== GENERANDO ETIQUETA ===', {
+      pedidoId,
+      carrier: pedido.envio_carrier,
+      service: pedido.envio_service_code,
+      branchCode: pedido.envio_branch_code || null,
+      esSucursal,
+      weight,
+      totalItems,
+    })
+
+    // DESTINO
+    // Siempre enviamos la dirección completa.
+    // Si es sucursal, además agregamos branchCode.
     const destination = {
       name: pedido.cliente_nombre || 'Cliente',
       company: 'Particular',
@@ -84,6 +87,7 @@ export async function POST(request) {
         pedido.comprador_email ||
         'sin-email@dimedetiambos.com.ar',
       phone: pedido.cliente_telefono || '1100000000',
+
       street: pedido.direccion.calle,
       number: pedido.direccion.numero,
       district: pedido.direccion.ciudad,
@@ -144,20 +148,8 @@ export async function POST(request) {
     }
 
     console.log(
-      '=== GENERANDO ETIQUETA ===',
-      JSON.stringify(
-        {
-          pedidoId,
-          carrier: pedido.envio_carrier,
-          service: pedido.envio_service_code,
-          branchCode: pedido.envio_branch_code || null,
-          esSucursal,
-          weight,
-          totalItems,
-        },
-        null,
-        2
-      )
+      '=== PAYLOAD GENERAR ETIQUETA ===',
+      JSON.stringify(payload, null, 2)
     )
 
     const res = await fetch(
@@ -198,14 +190,11 @@ export async function POST(request) {
     )
 
     if (!res.ok || data.meta === 'error') {
-      const mensaje =
-        data.error?.message ||
-        data.error?.description ||
-        'Error al generar la etiqueta en Envia.'
-
       return NextResponse.json(
         {
-          error: mensaje,
+          error:
+            data.error?.message ||
+            'Error al generar la etiqueta en Envia.',
         },
         { status: 400 }
       )
