@@ -73,7 +73,24 @@ async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
       return []
     }
 
-    return data.data
+    console.log(
+  `=== SERVICIOS DEVUELTOS POR ${carrier} ===`,
+  JSON.stringify(
+    data.data.map((rate) => ({
+      carrier: rate.carrier,
+      carrierDescription: rate.carrierDescription,
+      service: rate.service,
+      serviceId: rate.serviceId,
+      serviceDescription: rate.serviceDescription,
+      totalPrice: rate.totalPrice,
+      branches: rate.branches,
+    })),
+    null,
+    2
+  )
+)
+
+return data.data
   } catch (err) {
     console.error(`Excepción con carrier ${carrier}:`, err.message)
     return []
