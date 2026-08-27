@@ -39,10 +39,11 @@ export async function GET() {
       },
     ],
     shipment: {
-      carrier: 'andreani',
-      type: 1,
-      serviceId: 414,
-    },
+  carrier: 'andreani',
+  type: 1,
+  service: 'sucursal',
+  serviceId: 414,
+},
     settings: {
       printFormat: 'PDF',
       printSize: 'STOCK_4X6',
