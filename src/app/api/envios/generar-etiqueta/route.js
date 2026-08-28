@@ -153,7 +153,7 @@ export async function POST(request) {
     )
 
     const res = await fetch(
-      'https://api-test.envia.com/ship/generate/',
+  'https://api.envia.com/ship/generate/',
       {
         method: 'POST',
         headers: {
