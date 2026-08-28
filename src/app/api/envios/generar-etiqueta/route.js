@@ -158,7 +158,7 @@ export async function POST(request) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.ENVIA_TOKEN.trim()}`,
+          Authorization: `Bearer ${process.env.ENVIA_API_KEY.trim()}`,
         },
         body: JSON.stringify(payload),
       }
