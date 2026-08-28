@@ -116,6 +116,9 @@ export async function POST(request) {
         state: 'B',
         country: 'AR',
         postalCode: '1650',
+        ...(pedido.envio_carrier === 'oca'
+          ? { branchCode: '1461' }
+          : {}),
       },
 
       destination,
