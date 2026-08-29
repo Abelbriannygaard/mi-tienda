@@ -140,7 +140,9 @@ export async function POST(req) {
 
     // Incluye todas las opciones devueltas por Envia:
     // domicilio y sucursal.
-    const todasLasCotizaciones = resultadosPorCarrier.flat()
+    const todasLasCotizaciones = resultadosPorCarrier
+      .flat()
+      .filter((rate) => !(rate.carrier === 'oca' && ['oca_PP', 'oca_PS'].includes(rate.service)))
 
     if (todasLasCotizaciones.length === 0) {
       return NextResponse.json(
