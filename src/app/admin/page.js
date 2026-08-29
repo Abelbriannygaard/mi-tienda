@@ -109,7 +109,7 @@ export default async function PanelAdmin() {
                 )}
 
                 <p style={{ marginTop: '10px', fontSize: '12px', color: '#aaa' }}>
-                  Pago #{pedido.mercadopago_payment_id} · {new Date(pedido.created_at).toLocaleString('es-AR')}
+                  Pedido #{pedido.id} · Pago #{pedido.mercadopago_payment_id} · {new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
                 </p>
                                 <BotonGenerarEtiqueta pedido={pedido} />
 
