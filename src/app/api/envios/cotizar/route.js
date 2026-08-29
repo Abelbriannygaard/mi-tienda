@@ -178,10 +178,12 @@ export async function POST(req) {
             rate.serviceDescription || rate.service || 'Estándar',
           price: Math.round(rate.totalPrice || 0),
           deliveryText: `Llega en aprox. ${totalDaysMin} a ${totalDaysMax} días corridos (incluye 7 a 12 días de confección)`,
-          branches: (rate.branches || []).map((b) => ({
-            branchCode: b.branch_code,
-            direccion: `${b.reference || ''} - ${b.address?.address || ''}, ${b.address?.city || ''}`.trim(),
-          })),
+          branches: (rate.serviceDescription || '').toLowerCase().trim().endsWith('a sucursal')
+            ? (rate.branches || []).map((b) => ({
+                branchCode: b.branch_code,
+                direccion: `${b.reference || ''} - ${b.address?.address || ''}, ${b.address?.city || ''}`.trim(),
+              }))
+            : [],
         }
       })
       .sort((a, b) => a.price - b.price)
