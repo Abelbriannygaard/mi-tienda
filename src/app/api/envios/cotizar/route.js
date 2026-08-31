@@ -4,6 +4,13 @@ const CARRIERS = ['correoArgentino', 'andreani', 'urbano', 'oca']
 
 async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
   try {
+    console.log(`=== INTENTANDO COTIZAR CON ${carrier} ===`, {
+  destination: {
+    city: 'Córdoba', // o lo que hayas puesto
+    state: resolverProvincia(postalCode),
+    postalCode: String(postalCode).trim(),
+  },
+})
     const res = await fetch('https://api.envia.com/ship/rate', {
       method: 'POST',
       headers: {
