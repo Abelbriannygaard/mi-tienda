@@ -114,7 +114,7 @@ export async function POST(request) {
         number: '2646',
         district: 'Villa Libertad',
         city: 'General San Martín',
-        state: 'B',
+        state: 'BA',
         country: 'AR',
         postalCode: '1650',
         ...(pedido.envio_carrier === 'oca'
