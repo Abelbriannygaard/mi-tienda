@@ -235,11 +235,13 @@ export default function CarritoIcono() {
                 <Link
                   href="/checkout"
                   style={{
+                    display: 'block',
                     marginTop: 'auto',
                     position: 'sticky',
                     bottom: 0,
                     backgroundColor: 'white',
                     paddingTop: '10px',
+                    paddingBottom: '10px',
                     zIndex: 1,
                   }}
                 >
