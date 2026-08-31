@@ -32,7 +32,7 @@ async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
           street: 'Calle Falsa',
           number: '123',
           district: 'Centro',
-          city: 'Sin especificar',
+          city: 'Córdoba',
           state: resolverProvincia(postalCode),
           country: 'AR',
           postalCode: String(postalCode).trim(),
