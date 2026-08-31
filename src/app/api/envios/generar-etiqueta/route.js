@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolverProvincia } from '@/lib/resolverProvincia'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -92,7 +93,7 @@ export async function POST(request) {
       number: pedido.direccion.numero,
       district: pedido.direccion.ciudad,
       city: pedido.direccion.ciudad,
-      state: 'B',
+      state: resolverProvincia(pedido.direccion.codigoPostal),
       country: 'AR',
       postalCode: pedido.direccion.codigoPostal,
 
@@ -113,7 +114,7 @@ export async function POST(request) {
         number: '2646',
         district: 'Villa Libertad',
         city: 'General San Martín',
-        state: resolverProvincia(pedido.direccion.codigoPostal),
+        state: 'B',
         country: 'AR',
         postalCode: '1650',
         ...(pedido.envio_carrier === 'oca'
