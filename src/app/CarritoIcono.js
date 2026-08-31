@@ -59,7 +59,7 @@ export default function CarritoIcono() {
               position: 'fixed',
               top: 0,
               right: 0,
-              height: '100vh',
+              height: '100dvh',
               width: '340px',
               maxWidth: '90vw',
               backgroundColor: 'white',
