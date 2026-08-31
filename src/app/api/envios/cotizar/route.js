@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-
+import { resolverProvincia } from '@/lib/resolverProvincia'
 const CARRIERS = ['correoArgentino', 'andreani', 'urbano', 'oca']
 
 async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
@@ -32,11 +32,11 @@ async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
           street: 'Calle Falsa',
           number: '123',
           district: 'Centro',
-          city: 'Buenos Aires',
-          state: 'B',
+          city: 'Sin especificar',
+          state: resolverProvincia(postalCode),
           country: 'AR',
           postalCode: String(postalCode).trim(),
-        },
+          },
         packages: [
           {
             content: 'Indumentaria Medica',
