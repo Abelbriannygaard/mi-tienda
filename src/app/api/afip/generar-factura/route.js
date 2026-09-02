@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Afip from '@afipsdk/afip.js'
+import { generarFacturaPdf } from '@/lib/generarFacturaPdf'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -82,12 +83,34 @@ export async function POST(request) {
 
     console.log('=== RESPUESTA AFIP ===', JSON.stringify(resultado, null, 2))
 
+    const pdfBytes = await generarFacturaPdf({
+      pedido,
+      resultado,
+      puntoVenta: PUNTO_VENTA,
+      tipoComprobante: TIPO_COMPROBANTE,
+    })
+
+    const nombreArchivo = `factura-${PUNTO_VENTA}-${resultado.voucher_number}.pdf`
+
+    const { error: errorSubida } = await supabaseAdmin.storage
+      .from('facturas')
+      .upload(nombreArchivo, pdfBytes, { contentType: 'application/pdf', upsert: true })
+
+    let facturaUrl = null
+    if (!errorSubida) {
+      const { data: urlData } = supabaseAdmin.storage.from('facturas').getPublicUrl(nombreArchivo)
+      facturaUrl = urlData.publicUrl
+    } else {
+      console.error('Error al subir PDF a Supabase Storage:', errorSubida)
+    }
+
     const { error: errorGuardar } = await supabaseAdmin
       .from('pedidos')
       .update({
         factura_cae: resultado.CAE,
         factura_vencimiento_cae: resultado.CAEFchVto,
         factura_numero: `${PUNTO_VENTA}-${resultado.voucher_number}`,
+        factura_pdf_url: facturaUrl,
       })
       .eq('id', pedidoId)
 
