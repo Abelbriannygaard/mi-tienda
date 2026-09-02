@@ -90,7 +90,7 @@ export async function POST(request) {
       tipoComprobante: TIPO_COMPROBANTE,
     })
 
-    const nombreArchivo = `factura-${PUNTO_VENTA}-${resultado.voucher_number}.pdf`
+    const nombreArchivo = `factura-${PUNTO_VENTA}-${proximoNumero}.pdf`
 
     const { error: errorSubida } = await supabaseAdmin.storage
       .from('facturas')
@@ -109,7 +109,7 @@ export async function POST(request) {
       .update({
         factura_cae: resultado.CAE,
         factura_vencimiento_cae: resultado.CAEFchVto,
-        factura_numero: `${PUNTO_VENTA}-${resultado.voucher_number}`,
+        factura_numero: `${PUNTO_VENTA}-${proximoNumero}`,
         factura_pdf_url: facturaUrl,
       })
       .eq('id', pedidoId)

@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import QRCode from 'qrcode'
 
-export async function generarFacturaPdf({ pedido, resultado, puntoVenta, tipoComprobante }) {
+export async function generarFacturaPdf({ pedido, resultado, puntoVenta, tipoComprobante, numeroComprobante }) {
   const pdfDoc = await PDFDocument.create()
   const page = pdfDoc.addPage([595, 842]) // A4
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
@@ -23,7 +23,7 @@ export async function generarFacturaPdf({ pedido, resultado, puntoVenta, tipoCom
   y -= 20
   dibujarTexto('FACTURA C', 40, 14, true)
   y -= 20
-  dibujarTexto(`Punto de Venta: ${String(puntoVenta).padStart(4, '0')}  Comp. Nro: ${String(resultado.voucher_number).padStart(8, '0')}`, 40)
+  dibujarTexto(`Punto de Venta: ${String(puntoVenta).padStart(4, '0')}  Comp. Nro: ${String(numeroComprobante).padStart(8, '0')}`, 40)
   y -= 40
 
   dibujarTexto(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 40)
@@ -65,7 +65,7 @@ export async function generarFacturaPdf({ pedido, resultado, puntoVenta, tipoCom
     cuit: Number(process.env.AFIP_CUIT),
     ptoVta: puntoVenta,
     tipoCmp: tipoComprobante,
-    nroCmp: resultado.voucher_number,
+    nroCmp: numeroComprobante,
     importe: Number(pedido.total),
     moneda: 'PES',
     ctz: 1,
