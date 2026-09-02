@@ -43,6 +43,9 @@ export async function POST(request) {
       production: true,
     })
 
+    const ultimoAutorizado = await afip.ElectronicBilling.getLastVoucher(PUNTO_VENTA, TIPO_COMPROBANTE)
+    const proximoNumero = ultimoAutorizado + 1
+
     // Determinar tipo y número de documento del cliente
     const dni = (pedido.cliente_dni || '').replace(/\D/g, '')
     const docTipo = dni.length >= 7 ? 96 : 99 // 96 = DNI, 99 = Consumidor Final sin identificar
@@ -60,6 +63,8 @@ export async function POST(request) {
       Concepto: 1, // Productos
       DocTipo: docTipo,
       DocNro: docNro,
+      CbteDesde: proximoNumero,
+      CbteHasta: proximoNumero,
       CbteFch: fecha,
       ImpTotal: total,
       ImpTotConc: 0,
