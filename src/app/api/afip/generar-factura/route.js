@@ -46,7 +46,7 @@ export async function POST(request) {
     // Determinar tipo y número de documento del cliente
     const dni = (pedido.cliente_dni || '').replace(/\D/g, '')
     const docTipo = dni.length >= 7 ? 96 : 99 // 96 = DNI, 99 = Consumidor Final sin identificar
-    const docNro = dni.length >= 7 ? dni : 0
+    const docNro = dni.length >= 7 ? Number(dni) : 0
 
     const hoy = new Date()
     const fecha = `${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getDate()).padStart(2, '0')}`
