@@ -22,6 +22,15 @@ export async function guardarPedido(paymentId) {
     precio: item.unit_price,
   })) || []
 
+  // Ver si este pedido ya existía antes con estado aprobado (para no reprocesar/duplicar emails)
+  const { data: pedidoExistente } = await supabaseAdmin
+    .from('pedidos')
+    .select('estado')
+    .eq('mercadopago_payment_id', String(paymentId))
+    .maybeSingle()
+
+  const yaEstabaAprobado = pedidoExistente?.estado === 'approved'
+
   const datosCliente = pago.metadata?.datos_cliente || {}
   const zonaEnvio = pago.metadata?.zona_envio || null
 
@@ -61,8 +70,8 @@ export async function guardarPedido(paymentId) {
     throw new Error('Error al guardar el pedido')
   }
 
-  // Enviar emails solo si el pago quedó aprobado (evita mails por pagos pendientes/rechazados)
-  if (pago.status === 'approved') {
+  // Enviar emails solo si el pago quedó aprobado Y es la primera vez que lo procesamos
+  if (pago.status === 'approved' && !yaEstabaAprobado) {
     const pedidoGuardado = {
       cliente_nombre: datosCliente.nombre || null,
       comprador_email: datosCliente.email || pago.payer?.email || null,
