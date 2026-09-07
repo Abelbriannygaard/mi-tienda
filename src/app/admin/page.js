@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import CerrarSesionBoton from './CerrarSesionBoton'
 import BotonGenerarEtiqueta from './BotonGenerarEtiqueta'
+import BotonAnularFactura from './BotonAnularFactura'
 export const dynamic = 'force-dynamic'
 
 const supabaseAdmin = createClient(
@@ -112,6 +113,7 @@ export default async function PanelAdmin() {
                   Pedido #{pedido.id} · Pago #{pedido.mercadopago_payment_id} · {new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
                 </p>
                                 <BotonGenerarEtiqueta pedido={pedido} />
+                                <BotonAnularFactura pedido={pedido} />
               </div>
             )
           })}
