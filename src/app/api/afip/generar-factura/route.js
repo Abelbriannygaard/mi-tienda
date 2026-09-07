@@ -88,6 +88,7 @@ export async function POST(request) {
       resultado,
       puntoVenta: PUNTO_VENTA,
       tipoComprobante: TIPO_COMPROBANTE,
+      numeroComprobante: proximoNumero,
     })
 
     const nombreArchivo = `factura-${PUNTO_VENTA}-${proximoNumero}.pdf`
