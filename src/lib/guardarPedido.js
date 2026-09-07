@@ -1,6 +1,7 @@
 import { MercadoPagoConfig, Payment } from 'mercadopago'
 import { createClient } from '@supabase/supabase-js'
 import { enviarEmailConfirmacionCliente, enviarEmailNotificacionVenta } from './enviarEmails'
+import { generarFactura } from './generarFactura'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
@@ -84,7 +85,25 @@ export async function guardarPedido(paymentId) {
       mercadopago_payment_id: String(paymentId),
     }
 
-    await enviarEmailConfirmacionCliente(pedidoGuardado)
+    let facturaInfo = null
+    try {
+      facturaInfo = await generarFactura({ ...pedidoGuardado, factura_cae: null })
+      if (!facturaInfo.yaExistia) {
+        await supabaseAdmin
+          .from('pedidos')
+          .update({
+            factura_cae: facturaInfo.cae,
+            factura_vencimiento_cae: facturaInfo.vencimiento,
+            factura_numero: facturaInfo.numero,
+            factura_pdf_url: facturaInfo.pdfUrl,
+          })
+          .eq('mercadopago_payment_id', String(paymentId))
+      }
+    } catch (error) {
+      console.error('Error al generar factura automática:', error)
+    }
+
+    await enviarEmailConfirmacionCliente({ ...pedidoGuardado, factura_pdf_url: facturaInfo?.pdfUrl || null })
     await enviarEmailNotificacionVenta(pedidoGuardado)
   }
 

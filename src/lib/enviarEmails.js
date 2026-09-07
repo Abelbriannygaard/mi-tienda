@@ -41,6 +41,7 @@ export async function enviarEmailConfirmacionCliente(pedido) {
           </div>
 
           ${pedido.direccion ? `<p><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${pedido.factura_pdf_url ? `<p><a href="${pedido.factura_pdf_url}" style="color: #009ee3;">📄 Ver tu factura</a></p>` : ''}
 
           <p style="margin-top: 24px; color: #666; font-size: 14px;">
             Cualquier consulta, respondé este mail o escribinos por WhatsApp.
