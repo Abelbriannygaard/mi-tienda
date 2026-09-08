@@ -61,11 +61,13 @@ async function preguntarleAGemini(mensajeCliente) {
   );
 
   const data = await res.json();
+  console.log("Respuesta de Gemini:", JSON.stringify(data));
+
   return data.candidates?.[0]?.content?.parts?.[0]?.text || "Disculpá, no pude procesar tu consulta en este momento.";
 }
 
 async function mandarMensajeWhatsApp(numeroDestino, texto) {
-  await fetch(
+  const res = await fetch(
     `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_ID}/messages`,
     {
       method: "POST",
@@ -81,4 +83,13 @@ async function mandarMensajeWhatsApp(numeroDestino, texto) {
       }),
     }
   );
+
+  const data = await res.json();
+  console.log("Respuesta de WhatsApp API:", JSON.stringify(data));
+
+  if (!res.ok) {
+    console.error("ERROR al mandar mensaje de WhatsApp:", JSON.stringify(data));
+  }
+
+  return data;
 }
