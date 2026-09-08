@@ -26,12 +26,13 @@ export async function POST(request) {
     }
 
     const from = message.from; // número del cliente
+    const paraEnviar = from.startsWith("549") ? "54" + from.slice(3) : from;
     console.log("Número del remitente (from):", from);
     const texto = message.text?.body;
 
     if (texto) {
       const respuesta = await preguntarleAGemini(texto);
-      await mandarMensajeWhatsApp(from, respuesta);
+      await mandarMensajeWhatsApp(paraEnviar, respuesta);
     }
 
     return new Response("OK", { status: 200 });
