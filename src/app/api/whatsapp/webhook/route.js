@@ -26,6 +26,7 @@ export async function POST(request) {
     }
 
     const from = message.from; // número del cliente
+    console.log("Número del remitente (from):", from);
     const texto = message.text?.body;
 
     if (texto) {
