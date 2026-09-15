@@ -35,7 +35,7 @@ export async function POST(request) {
       await guardarMensaje(from, hiloId, "user", texto);
 
       const historial = await obtenerHistorialDelHilo(hiloId);
-      const respuesta = await preguntarleAGemini(historial);
+      const respuesta = await preguntarleAClaude(historial);
 
       await guardarMensaje(from, hiloId, "model", respuesta);
       await mandarMensajeWhatsApp(paraEnviar, respuesta);
@@ -117,7 +117,7 @@ async function obtenerHistorialDelHilo(hiloId) {
   return data || [];
 }
 
-async function preguntarleAGemini(historial) {
+async function preguntarleAClaude(historial) {
   const contextoDelNegocio = `
 Sos el asistente virtual de Dimedeti Ambos, un negocio de venta de ambos médicos y sanitarios.
 Hablale a los clientes en español rioplatense, con un tono cercano y usando algún emoji de vez en cuando.
@@ -160,28 +160,31 @@ CUÁNDO DERIVAR A UNA PERSONA:
 Si te preguntan sobre un reclamo, un problema con un pedido ya hecho, o cualquier cosa muy específica que no sepas responder con esta información, avisale al cliente que una persona del local va a seguir la conversación, y no inventes una respuesta.
 `;
 
-  const contents = historial.map((m) => ({
-    role: m.rol,
-    parts: [{ text: m.mensaje }],
+  const mensajes = historial.map((m) => ({
+    role: m.rol === "model" ? "assistant" : "user",
+    content: m.mensaje,
   }));
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: contextoDelNegocio }] },
-        contents,
-      }),
-    }
-  );
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 500,
+      system: contextoDelNegocio,
+      messages: mensajes,
+    }),
+  });
 
   const data = await res.json();
-  console.log("Respuesta de Gemini:", JSON.stringify(data));
+  console.log("Respuesta de Claude:", JSON.stringify(data));
 
   return (
-    data.candidates?.[0]?.content?.parts?.[0]?.text ||
+    data.content?.[0]?.text ||
     "Disculpá, no pude procesar tu consulta en este momento."
   );
 }
