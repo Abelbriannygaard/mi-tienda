@@ -1,4 +1,9 @@
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 const MAXIMO_HILOS_POR_CLIENTE = 5;
 
@@ -116,8 +121,20 @@ async function obtenerHistorialDelHilo(hiloId) {
 
   return data || [];
 }
+async function obtenerProductos() {
+  const { data } = await supabase
+    .from("productos")
+    .select("nombre, descripcion, precio")
+    .order("nombre", { ascending: true });
+
+  return data || [];
+}
 
 async function preguntarleAClaude(historial) {
+  const productos = await obtenerProductos();
+  const listaDeProductos = productos
+    .map((p) => `- ${p.nombre}: $${p.precio}${p.descripcion ? " — " + p.descripcion : ""}`)
+    .join("\n");
   const contextoDelNegocio = `
 Sos el asistente virtual de Dimedeti Ambos, un negocio de venta de ambos médicos y sanitarios.
 Hablale a los clientes en español rioplatense, con un tono cercano y usando algún emoji de vez en cuando.
@@ -135,8 +152,9 @@ PRODUCTOS Y TALLES:
 - Los clientes eligen el talle comparando sus medidas con la tabla de talles del sitio (no hay local para probarse)
 - Se pueden combinar talles entre prendas de un mismo pedido (ej: chaqueta de un talle, pantalón de otro)
 - Se hacen talles especiales o a medida a criterio; si la modificación es grande respecto al ambo original, se cobra un adicional
-- Para precios exactos, siempre derivá al catálogo: https://tienda.dimedetiambos.com.ar (no inventes ni des precios de memoria)
-
+- Estos son los productos y precios actuales (siempre correctos, tomados directo de la base de datos):
+${listaDeProductos}
+- Si preguntan por un producto que no está en esta lista, avisá que todavía no está cargado en el sistema y que pueden ver el catálogo completo en https://tienda.dimedetiambos.com.ar
 ENVÍOS:
 - Envían a todo el país
 - Carriers disponibles: Andreani, Correo Argentino, OCA y Urbano
