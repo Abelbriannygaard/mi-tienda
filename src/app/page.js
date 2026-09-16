@@ -10,18 +10,18 @@ export default async function Home() {
     .select('*')
 
   return (
-    <main style={{ padding: '40px' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+    <main className="min-h-screen bg-[#FAF6F0]">
+      <header className="flex items-center justify-between px-6 py-5 md:px-10 border-b border-[#E4DCCF]">
+        <span className="font-serif text-xl text-[#2E2A26]">Dimedeti Ambos</span>
         <CarritoIcono />
-      </div>
+      </header>
 
-      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '20px' }}>
-        {productos?.map((producto) => (
-          <div key={producto.id}>
-            <p>PRODUCTO ID: {producto.id}</p>
-            <ProductoCard producto={producto} />
-          </div>
-        ))}
+      <div className="px-6 md:px-10 py-10">
+        <div className="flex flex-wrap gap-6">
+          {productos?.map((producto) => (
+            <ProductoCard key={producto.id} producto={producto} />
+          ))}
+        </div>
       </div>
     </main>
   )
