@@ -10,16 +10,20 @@ export default function ProductoDetalle({ producto, variantes }) {
   const coloresUnicos = Array.from(new Set(variantes.map((v) => v.color).filter(Boolean)))
 
   // 2. Estado para el color seleccionado
+  const varianteNegro = variantes.find((v) => v.color?.toLowerCase() === 'negro')
+  const varianteInicial = varianteNegro || variantes[0]
+
   const [colorSeleccionado, setColorSeleccionado] = useState(
-    variantes[0]?.color || ''
+    varianteInicial?.color || ''
   )
+  
 
   // 3. Variantes asociadas al color seleccionado
   const variantesDelColor = variantes.filter((v) => v.color === colorSeleccionado)
 
   // 4. Variante activa (talle, stock, etc.)
   const [varianteElegida, setVarianteElegida] = useState(
-    variantes[0] || null
+    varianteInicial || null
   )
 
   // 5. Estado para la foto del carrusel actualmente visible
