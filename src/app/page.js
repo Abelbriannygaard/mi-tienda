@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase'
 import ProductoCard from './ProductoCard'
 import CarritoIcono from './CarritoIcono'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Home() {
   const { data: productos } = await supabase
     .from('productos')
