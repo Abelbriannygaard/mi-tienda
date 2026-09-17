@@ -181,19 +181,11 @@ export default function ProductoDetalle({ producto, variantes }) {
             </div>
           </div>
 
-          {/* INFORMACIÓN Y SELECCIÓN DEL PRODUCTO */}
+          {/* SELECCIÓN DE COMPRA (precio, color, talle, cantidad, botón) */}
           <div className="w-full md:w-[48%]">
-            <h1 className="font-serif text-2xl leading-snug text-[#2E2A26]">
-              {producto.nombre}
-            </h1>
-
-            <span className="mt-3 inline-block rounded-full bg-[#EFE6D8] px-4 py-1.5 text-lg font-semibold text-[#2F6B63]">
+            <span className="inline-block rounded-full bg-[#EFE6D8] px-4 py-1.5 text-lg font-semibold text-[#2F6B63]">
               ${producto.precio?.toLocaleString('es-AR')}
             </span>
-
-            <p className="mt-5 whitespace-pre-line text-[15px] leading-relaxed text-[#5C564C]">
-              {producto.descripcion}
-            </p>
 
             {/* Desplegable de Color */}
             {coloresUnicos.length > 0 && (
@@ -279,6 +271,16 @@ export default function ProductoDetalle({ producto, variantes }) {
               </div>
             )}
           </div>
+        </div>
+
+        {/* TÍTULO Y DESCRIPCIÓN, DEBAJO DE TODO */}
+        <div className="mt-10 border-t border-[#E4DCCF] pt-8">
+          <h1 className="font-serif text-2xl leading-snug text-[#2E2A26]">
+            {producto.nombre}
+          </h1>
+          <p className="mt-4 whitespace-pre-line text-[15px] leading-relaxed text-[#5C564C]">
+            {producto.descripcion}
+          </p>
         </div>
       </div>
 
