@@ -11,10 +11,14 @@ export default function ProductoCardCliente({ producto, variantes }) {
     .map((color) => variantes.find((v) => v.color === color && v.imagen_url))
     .filter(Boolean)
 
-  const [fotoActiva, setFotoActiva] = useState(primeraFotoPorColor[0])
+  const fotoNegro = primeraFotoPorColor.find((f) => f.color?.toLowerCase() === 'negro')
+  const fotoBlanco = primeraFotoPorColor.find((f) => f.color?.toLowerCase() === 'blanco')
+  const fotoPorDefecto = fotoNegro || fotoBlanco || primeraFotoPorColor[0]
+
+  const [fotoActiva, setFotoActiva] = useState(fotoPorDefecto)
   const [modalAbierto, setModalAbierto] = useState(false)
   const [colorSeleccionado, setColorSeleccionado] = useState(fotoActiva?.color || '')
-  const [varianteElegida, setVarianteElegida] = useState(fotoActiva || variantes[0] || null)
+  const [varianteElegida, setVarianteElegida] = useState(fotoPorDefecto || variantes[0] || null)
   const [cantidad, setCantidad] = useState(1)
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false)
 
