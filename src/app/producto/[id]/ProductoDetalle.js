@@ -149,7 +149,7 @@ export default function ProductoDetalle({ producto, variantes }) {
                   alt={producto.nombre}
                   onClick={() => setModalAbierto(true)}
                   title="Haz clic para ampliar"
-                  className="h-full w-full cursor-zoom-in object-cover"
+                  className="h-full w-full cursor-zoom-in object-contain"
                 />
               ) : (
                 <div className="h-full w-full bg-[#F3EEE6]" />
