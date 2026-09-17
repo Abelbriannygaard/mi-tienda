@@ -16,7 +16,6 @@ export default function ProductoDetalle({ producto, variantes }) {
   const [colorSeleccionado, setColorSeleccionado] = useState(
     varianteInicial?.color || ''
   )
-  
 
   // 3. Variantes asociadas al color seleccionado
   const variantesDelColor = variantes.filter((v) => v.color === colorSeleccionado)
@@ -108,303 +107,178 @@ export default function ProductoDetalle({ producto, variantes }) {
   }
 
   return (
-    <main style={{ padding: '40px', maxWidth: '1000px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link href="/" style={{ color: '#009ee3', textDecoration: 'none', fontSize: '14px' }}>
-          ← Volver al catálogo
-        </Link>
-        <CarritoIcono />
-      </div>
-
-      <div style={{ display: 'flex', gap: '30px', marginTop: '20px', flexWrap: 'wrap' }}>
-        {/* CARRUSEL Y GALERÍA DE IMÁGENES */}
-        <div style={{ flex: '1.2', minWidth: '320px', display: 'flex', gap: '15px' }}>
-          {/* Miniaturas a la izquierda */}
-          {imagenesGaleria.length > 1 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '480px', overflowY: 'auto' }}>
-              {imagenesGaleria.map((imgUrl, idx) => (
-                <img
-                  key={idx}
-                  src={imgUrl}
-                  alt={`Vista ${idx + 1}`}
-                  onClick={() => setFotoIndex(idx)}
-                  style={{
-                    width: '54px',
-                    height: '54px',
-                    objectFit: 'contain',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    border: fotoIndex === idx ? '2px solid #009ee3' : '1px solid #e0e0e0',
-                    backgroundColor: '#fff',
-                    opacity: fotoIndex === idx ? 1 : 0.7,
-                    transition: 'all 0.2s ease',
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Imagen Principal desplegada en tamaño completo */}
-          <div
-            style={{
-              position: 'relative',
-              flex: '1',
-              width: '100%',
-              backgroundColor: '#fff',
-              border: '1px solid #f0f0f0',
-              borderRadius: '10px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-              minHeight: '400px',
-            }}
+    <main className="min-h-screen bg-[#FAF6F0]">
+      <div className="mx-auto max-w-5xl px-6 py-8 md:px-10">
+        <div className="flex items-center justify-between">
+          <Link
+            href="/"
+            className="text-sm font-medium text-[#2F6B63] hover:text-[#28584F]"
           >
-            {imagenesGaleria.length > 0 ? (
-              <img
-                src={imagenesGaleria[fotoIndex]}
-                alt={producto.nombre}
-                onClick={() => setModalAbierto(true)}
-                title="Haz clic para ampliar"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  maxHeight: '480px',
-                  objectFit: 'contain',
-                  cursor: 'zoom-in',
-                }}
-              />
-            ) : (
-              <div style={{ width: '100%', height: '350px', backgroundColor: '#eee', borderRadius: '10px' }} />
-            )}
-
-            {/* Flechas de navegación del carrusel */}
-            {imagenesGaleria.length > 1 && (
-              <>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setFotoIndex((prev) => (prev === 0 ? imagenesGaleria.length - 1 : prev - 1))
-                  }}
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '10px',
-                    transform: 'translateY(-50%)',
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                    border: 'none',
-                    borderRadius: '50%',
-                    width: '36px',
-                    height: '36px',
-                    fontSize: '18px',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-                    zIndex: 2,
-                  }}
-                >
-                  ‹
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setFotoIndex((prev) => (prev === imagenesGaleria.length - 1 ? 0 : prev + 1))
-                  }}
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    right: '10px',
-                    transform: 'translateY(-50%)',
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                    border: 'none',
-                    borderRadius: '50%',
-                    width: '36px',
-                    height: '36px',
-                    fontSize: '18px',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
-                    zIndex: 2,
-                  }}
-                >
-                  ›
-                </button>
-              </>
-            )}
-          </div>
+            ← Volver al catálogo
+          </Link>
+          <CarritoIcono />
         </div>
 
-        {/* INFORMACIÓN Y SELECCIÓN DEL PRODUCTO */}
-        <div style={{ flex: '1', minWidth: '300px' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>{producto.nombre}</h1>
-          <p style={{ fontSize: '15px', color: '#666', marginTop: '8px' }}>{producto.descripcion}</p>
-          <p style={{ fontSize: '28px', fontWeight: 'bold', marginTop: '16px' }}>${producto.precio}</p>
-
-          {/* Desplegable de Color */}
-          {coloresUnicos.length > 0 && (
-            <div style={{ marginTop: '24px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#333' }}>
-                Color: <span style={{ fontWeight: 'normal', color: '#666' }}>{colorSeleccionado}</span>
-              </label>
-              <select
-                value={colorSeleccionado}
-                onChange={(e) => handleSeleccionarColor(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  fontSize: '15px',
-                  borderRadius: '8px',
-                  border: '1px solid #ccc',
-                  backgroundColor: '#fff',
-                  color: '#333',
-                  cursor: 'pointer',
-                  outline: 'none',
-                }}
-              >
-                {coloresUnicos.map((color) => (
-                  <option key={color} value={color}>
-                    {color}
-                  </option>
+        <div className="mt-6 flex flex-col gap-10 md:flex-row md:items-start">
+          {/* CARRUSEL Y GALERÍA DE IMÁGENES */}
+          <div className="flex w-full gap-4 md:w-[52%]">
+            {/* Miniaturas a la izquierda */}
+            {imagenesGaleria.length > 1 && (
+              <div className="flex max-h-[480px] flex-col gap-2.5 overflow-y-auto">
+                {imagenesGaleria.map((imgUrl, idx) => (
+                  <img
+                    key={idx}
+                    src={imgUrl}
+                    alt={`Vista ${idx + 1}`}
+                    onClick={() => setFotoIndex(idx)}
+                    className={`h-14 w-14 cursor-pointer rounded-md border object-cover transition ${
+                      fotoIndex === idx
+                        ? 'border-[#2F6B63] opacity-100 ring-1 ring-[#2F6B63]'
+                        : 'border-[#E4DCCF] opacity-70'
+                    }`}
+                  />
                 ))}
-              </select>
-            </div>
-          )}
-
-          {/* Desplegable de Talle */}
-          {variantesDelColor.length > 0 && (
-            <div style={{ marginTop: '20px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#333' }}>
-                Talle: <span style={{ fontWeight: 'normal', color: '#666' }}>{varianteElegida?.talle}</span>
-              </label>
-              <select
-                value={varianteElegida?.id || ''}
-                onChange={(e) => handleSeleccionarTalle(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  fontSize: '15px',
-                  borderRadius: '8px',
-                  border: '1px solid #ccc',
-                  backgroundColor: '#fff',
-                  color: '#333',
-                  cursor: 'pointer',
-                  outline: 'none',
-                }}
-              >
-                {variantesDelColor.map((variante) => (
-                  <option key={variante.id} value={variante.id} disabled={variante.stock === 0}>
-                    {variante.talle} {variante.stock === 0 ? '(Sin stock)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Selector de Cantidad */}
-          {varianteElegida && varianteElegida.stock > 0 && (
-            <div style={{ marginTop: '20px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#333' }}>
-                Cantidad: <span style={{ fontWeight: 'normal', color: '#666' }}>({varianteElegida.stock} disponibles)</span>
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-                <button
-                  onClick={() => setCantidad((c) => Math.max(1, c - 1))}
-                  disabled={cantidad <= 1}
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    fontSize: '18px',
-                    border: '1px solid #ccc',
-                    borderRadius: '8px 0 0 8px',
-                    backgroundColor: cantidad <= 1 ? '#f5f5f5' : '#fff',
-                    color: cantidad <= 1 ? '#ccc' : '#333',
-                    cursor: cantidad <= 1 ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  −
-                </button>
-                <div
-                  style={{
-                    width: '50px',
-                    height: '40px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '1px solid #ccc',
-                    borderLeft: 'none',
-                    borderRight: 'none',
-                    fontSize: '15px',
-                    fontWeight: '600',
-                  }}
-                >
-                  {cantidad}
-                </div>
-                <button
-                  onClick={() => setCantidad((c) => Math.min(varianteElegida.stock, c + 1))}
-                  disabled={cantidad >= varianteElegida.stock}
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    fontSize: '18px',
-                    border: '1px solid #ccc',
-                    borderRadius: '0 8px 8px 0',
-                    backgroundColor: cantidad >= varianteElegida.stock ? '#f5f5f5' : '#fff',
-                    color: cantidad >= varianteElegida.stock ? '#ccc' : '#333',
-                    cursor: cantidad >= varianteElegida.stock ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  +
-                </button>
               </div>
+            )}
+
+            {/* Imagen Principal desplegada en tamaño completo */}
+            <div className="relative flex aspect-[4/5] w-full items-center justify-center overflow-hidden rounded-2xl border border-[#E4DCCF] bg-white">
+              {imagenesGaleria.length > 0 ? (
+                <img
+                  src={imagenesGaleria[fotoIndex]}
+                  alt={producto.nombre}
+                  onClick={() => setModalAbierto(true)}
+                  title="Haz clic para ampliar"
+                  className="h-full w-full cursor-zoom-in object-cover"
+                />
+              ) : (
+                <div className="h-full w-full bg-[#F3EEE6]" />
+              )}
+
+              {/* Flechas de navegación del carrusel */}
+              {imagenesGaleria.length > 1 && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setFotoIndex((prev) => (prev === 0 ? imagenesGaleria.length - 1 : prev - 1))
+                    }}
+                    className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-lg shadow-md"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setFotoIndex((prev) => (prev === imagenesGaleria.length - 1 ? 0 : prev + 1))
+                    }}
+                    className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-lg shadow-md"
+                  >
+                    ›
+                  </button>
+                </>
+              )}
             </div>
-          )}
+          </div>
 
-          {/* Botón de Agregar al Carrito */}
-          <button
-            onClick={handleAgregar}
-            disabled={!varianteElegida || varianteElegida?.stock === 0}
-            style={{
-              marginTop: '28px',
-              width: '100%',
-              padding: '14px',
-              fontSize: '16px',
-              fontWeight: 'bold',
-              backgroundColor: (!varianteElegida || varianteElegida?.stock === 0) ? '#e0e0e0' : '#009ee3',
-              color: (!varianteElegida || varianteElegida?.stock === 0) ? '#999' : 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: (!varianteElegida || varianteElegida?.stock === 0) ? 'not-allowed' : 'pointer',
-              transition: 'transform 0.1s ease, background-color 0.2s ease',
-            }}
-            onMouseDown={(e) => {
-              if (!varianteElegida || varianteElegida?.stock === 0) return
-              e.currentTarget.style.transform = 'scale(0.97)'
-            }}
-            onMouseUp={(e) => {
-              e.currentTarget.style.transform = 'scale(1)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'scale(1)'
-            }}
-          >
-            {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
-          </button>
+          {/* INFORMACIÓN Y SELECCIÓN DEL PRODUCTO */}
+          <div className="w-full md:w-[48%]">
+            <h1 className="font-serif text-2xl leading-snug text-[#2E2A26]">
+              {producto.nombre}
+            </h1>
 
-          {/* Mensaje de confirmación */}
-          {mostrarConfirmacion && (
-            <div
-              style={{
-                marginTop: '12px',
-                padding: '10px 14px',
-                backgroundColor: '#dcfce7',
-                color: '#15803d',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: '600',
-                textAlign: 'center',
-              }}
+            <span className="mt-3 inline-block rounded-full bg-[#EFE6D8] px-4 py-1.5 text-lg font-semibold text-[#2F6B63]">
+              ${producto.precio?.toLocaleString('es-AR')}
+            </span>
+
+            <p className="mt-5 whitespace-pre-line text-[15px] leading-relaxed text-[#5C564C]">
+              {producto.descripcion}
+            </p>
+
+            {/* Desplegable de Color */}
+            {coloresUnicos.length > 0 && (
+              <div className="mt-6">
+                <label className="mb-1.5 block text-sm font-medium text-[#2E2A26]">
+                  Color: <span className="font-normal text-[#8A8378]">{colorSeleccionado}</span>
+                </label>
+                <select
+                  value={colorSeleccionado}
+                  onChange={(e) => handleSeleccionarColor(e.target.value)}
+                  className="w-full rounded-lg border border-[#E4DCCF] bg-white px-3 py-2.5 text-sm text-[#2E2A26] outline-none focus:border-[#2F6B63]"
+                >
+                  {coloresUnicos.map((color) => (
+                    <option key={color} value={color}>
+                      {color}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Desplegable de Talle */}
+            {variantesDelColor.length > 0 && (
+              <div className="mt-4">
+                <label className="mb-1.5 block text-sm font-medium text-[#2E2A26]">
+                  Talle: <span className="font-normal text-[#8A8378]">{varianteElegida?.talle}</span>
+                </label>
+                <select
+                  value={varianteElegida?.id || ''}
+                  onChange={(e) => handleSeleccionarTalle(e.target.value)}
+                  className="w-full rounded-lg border border-[#E4DCCF] bg-white px-3 py-2.5 text-sm text-[#2E2A26] outline-none focus:border-[#2F6B63]"
+                >
+                  {variantesDelColor.map((variante) => (
+                    <option key={variante.id} value={variante.id} disabled={variante.stock === 0}>
+                      {variante.talle} {variante.stock === 0 ? '(Sin stock)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Selector de Cantidad */}
+            {varianteElegida && varianteElegida.stock > 0 && (
+              <div className="mt-4">
+                <label className="mb-1.5 block text-sm font-medium text-[#2E2A26]">
+                  Cantidad: <span className="font-normal text-[#8A8378]">({varianteElegida.stock} disponibles)</span>
+                </label>
+                <div className="flex items-center">
+                  <button
+                    onClick={() => setCantidad((c) => Math.max(1, c - 1))}
+                    disabled={cantidad <= 1}
+                    className="h-10 w-10 rounded-l-lg border border-[#E4DCCF] text-lg text-[#2E2A26] disabled:text-[#CFC7B8]"
+                  >
+                    −
+                  </button>
+                  <div className="flex h-10 w-12 items-center justify-center border-y border-[#E4DCCF] text-sm font-semibold">
+                    {cantidad}
+                  </div>
+                  <button
+                    onClick={() => setCantidad((c) => Math.min(varianteElegida.stock, c + 1))}
+                    disabled={cantidad >= varianteElegida.stock}
+                    className="h-10 w-10 rounded-r-lg border border-[#E4DCCF] text-lg text-[#2E2A26] disabled:text-[#CFC7B8]"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Botón de Agregar al Carrito */}
+            <button
+              onClick={handleAgregar}
+              disabled={!varianteElegida || varianteElegida?.stock === 0}
+              className="mt-7 w-full rounded-full bg-[#2F6B63] py-3 text-sm font-semibold text-white transition hover:bg-[#28584F] disabled:bg-[#E4DCCF] disabled:text-[#8A8378]"
             >
-              ✓ Producto agregado al carrito
-            </div>
-          )}
+              {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
+            </button>
+
+            {/* Mensaje de confirmación */}
+            {mostrarConfirmacion && (
+              <div className="mt-3 rounded-lg bg-[#E3EFE9] px-3 py-2.5 text-center text-sm font-medium text-[#2F6B63]">
+                ✓ Producto agregado al carrito
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -412,34 +286,11 @@ export default function ProductoDetalle({ producto, variantes }) {
       {modalAbierto && imagenesGaleria.length > 0 && (
         <div
           onClick={() => setModalAbierto(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            backgroundColor: 'rgba(0, 0, 0, 0.85)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            zIndex: 1000,
-            padding: '20px',
-            cursor: 'zoom-out',
-          }}
+          className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-[#2E2A26]/85 p-5"
         >
           <button
             onClick={() => setModalAbierto(false)}
-            style={{
-              position: 'absolute',
-              top: '20px',
-              right: '25px',
-              backgroundColor: 'transparent',
-              border: 'none',
-              color: 'white',
-              fontSize: '32px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-            }}
+            className="absolute right-6 top-5 text-3xl font-bold text-white"
           >
             ✕
           </button>
@@ -448,13 +299,7 @@ export default function ProductoDetalle({ producto, variantes }) {
             src={imagenesGaleria[fotoIndex]}
             alt={producto.nombre}
             onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: '90vw',
-              maxHeight: '90vh',
-              objectFit: 'contain',
-              borderRadius: '8px',
-              boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-            }}
+            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
           />
         </div>
       )}
