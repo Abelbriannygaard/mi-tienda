@@ -4,8 +4,32 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 function formatearItems(items) {
   return items
-    .map((item) => `${item.cantidad} x ${item.nombre} — $${item.precio * item.cantidad}`)
-    .join('<br>')
+    .map((item) => {
+      const foto = item.imagen_url
+        ? `<td style="width: 64px; padding-right: 12px; vertical-align: top;">
+             <table role="presentation" width="64" height="64" style="width: 64px; height: 64px; background-color: #FAF6F0; border: 1px solid #E4DCCF; border-radius: 8px;">
+               <tr>
+                 <td align="center" valign="middle" style="text-align: center; vertical-align: middle;">
+                   <img src="${item.imagen_url}" alt="${item.nombre}" width="56" style="max-width: 56px; max-height: 56px; display: block; margin: 0 auto;" />
+                 </td>
+               </tr>
+             </table>
+           </td>`
+        : ''
+
+      return `
+        <table role="presentation" width="100%" style="margin-bottom: 10px;">
+          <tr>
+            ${foto}
+            <td style="vertical-align: top; font-size: 14px; color: #2E2A26;">
+              <div>${item.nombre}</div>
+              <div style="color: #8A8378;">Cantidad: ${item.cantidad} — $${item.precio * item.cantidad}</div>
+            </td>
+          </tr>
+        </table>
+      `
+    })
+    .join('')
 }
 
 function formatearDireccion(direccion) {
@@ -29,21 +53,21 @@ export async function enviarEmailConfirmacionCliente(pedido) {
       replyTo: 'abel.nygaard@gmail.com',
       subject: '¡Gracias por tu compra! - dimedetiambos',
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
-          <h2 style="color: #009ee3;">¡Gracias por tu compra, ${pedido.cliente_nombre || ''}!</h2>
-          <p>Recibimos tu pedido y ya está siendo procesado.</p>
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">¡Gracias por tu compra, ${pedido.cliente_nombre || ''}!</h2>
+          <p style="color: #2E2A26;">Recibimos tu pedido y ya está siendo procesado.</p>
 
-          <div style="background-color: #f7f7f7; padding: 16px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 0 0 10px; font-weight: bold;">Resumen del pedido</p>
-            <p style="margin: 0;">${formatearItems(pedido.items)}</p>
-            ${pedido.zona_envio ? `<p style="margin: 10px 0 0;">Envío (${pedido.zona_envio}): $${pedido.costo_envio}</p>` : ''}
-            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px;">Total: $${pedido.total}</p>
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
+            <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
+            ${formatearItems(pedido.items)}
+            ${pedido.zona_envio ? `<p style="margin: 10px 0 0; color: #2E2A26;">Envío (${pedido.zona_envio}): $${pedido.costo_envio}</p>` : ''}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
           </div>
 
-          ${pedido.direccion ? `<p><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
-          ${pedido.factura_pdf_url ? `<p><a href="${pedido.factura_pdf_url}" style="color: #009ee3;">📄 Ver tu factura</a></p>` : ''}
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${pedido.factura_pdf_url ? `<p><a href="${pedido.factura_pdf_url}" style="color: #2F6B63;">📄 Ver tu factura</a></p>` : ''}
 
-          <p style="margin-top: 24px; color: #666; font-size: 14px;">
+          <p style="margin-top: 24px; color: #8A8378; font-size: 14px;">
             Cualquier consulta, respondé este mail o escribinos por WhatsApp.
           </p>
         </div>
@@ -69,24 +93,24 @@ export async function enviarEmailNotificacionVenta(pedido) {
       to: emailAdmin,
       subject: `Nueva venta 💰 - $${pedido.total}`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
-          <h2 style="color: #15803d;">Nueva venta aprobada</h2>
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">Nueva venta aprobada</h2>
 
-          <p><strong>Cliente:</strong> ${pedido.cliente_nombre || 'Sin nombre'}</p>
-          <p><strong>Email:</strong> ${pedido.comprador_email || '-'}</p>
-          <p><strong>Teléfono:</strong> ${pedido.cliente_telefono || '-'}</p>
-          <p><strong>DNI:</strong> ${pedido.cliente_dni || '-'}</p>
+          <p style="color: #2E2A26;"><strong>Cliente:</strong> ${pedido.cliente_nombre || 'Sin nombre'}</p>
+          <p style="color: #2E2A26;"><strong>Email:</strong> ${pedido.comprador_email || '-'}</p>
+          <p style="color: #2E2A26;"><strong>Teléfono:</strong> ${pedido.cliente_telefono || '-'}</p>
+          <p style="color: #2E2A26;"><strong>DNI:</strong> ${pedido.cliente_dni || '-'}</p>
 
-          <div style="background-color: #f7f7f7; padding: 16px; border-radius: 8px; margin: 16px 0;">
-            <p style="margin: 0;">${formatearItems(pedido.items)}</p>
-            ${pedido.zona_envio ? `<p style="margin: 10px 0 0;">Envío (${pedido.zona_envio}): $${pedido.costo_envio}</p>` : ''}
-            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px;">Total: $${pedido.total}</p>
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
+            ${formatearItems(pedido.items)}
+            ${pedido.zona_envio ? `<p style="margin: 10px 0 0; color: #2E2A26;">Envío (${pedido.zona_envio}): $${pedido.costo_envio}</p>` : ''}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
           </div>
 
-          ${pedido.direccion ? `<p><strong>Dirección:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
-          ${pedido.notas ? `<p><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
 
-          <p style="margin-top: 20px; font-size: 13px; color: #888;">
+          <p style="margin-top: 20px; font-size: 13px; color: #8A8378;">
             Pago #${pedido.mercadopago_payment_id}
           </p>
         </div>

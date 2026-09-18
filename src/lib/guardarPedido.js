@@ -16,10 +16,13 @@ export async function guardarPedido(paymentId) {
   const payment = new Payment(client)
   const pago = await payment.get({ id: paymentId })
 
-  const items = pago.additional_info?.items?.map((item) => ({
+  const itemsOriginales = pago.metadata?.items_originales || []
+
+  const items = pago.additional_info?.items?.map((item, idx) => ({
     nombre: item.title,
     cantidad: item.quantity,
     precio: item.unit_price,
+    imagen_url: itemsOriginales[idx]?.imagen_url || null,
   })) || []
 
   // Ver si este pedido ya existía antes con estado aprobado (para no reprocesar/duplicar emails)

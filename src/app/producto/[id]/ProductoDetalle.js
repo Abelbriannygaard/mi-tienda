@@ -91,13 +91,14 @@ export default function ProductoDetalle({ producto, variantes }) {
     }
   }
 
-  function handleAgregar() {
+    function handleAgregar() {
     agregarAlCarrito(
       {
         ...producto,
         variante_id: varianteElegida?.id,
         color: varianteElegida?.color,
         talle: varianteElegida?.talle,
+        imagen_url: varianteElegida?.imagen_url,
       },
       cantidad
     )

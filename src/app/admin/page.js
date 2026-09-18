@@ -89,13 +89,34 @@ export default async function PanelAdmin() {
 
                 <div style={{ marginTop: '14px', borderTop: '1px solid #f0f0f0', paddingTop: '14px' }}>
                   {(pedido.items || []).map((item, idx) => (
-  <p key={idx} style={{ margin: '2px 0', fontSize: '14px', color: '#333' }}>
-    {item.cantidad} x {item.nombre}
-    {item.talle ? ` (Talle ${item.talle})` : ''}
-    {item.color ? ` - ${item.color}` : ''}
-    {' '}— ${item.precio}
-  </p>
-))}
+                    <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', margin: '6px 0' }}>
+                      {item.imagen_url && (
+                        <div
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            flexShrink: 0,
+                            borderRadius: '6px',
+                            border: '1px solid #e5e5e5',
+                            backgroundColor: '#fafafa',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <img
+                            src={item.imagen_url}
+                            alt={item.nombre}
+                            style={{ maxWidth: '44px', maxHeight: '44px', objectFit: 'contain' }}
+                          />
+                        </div>
+                      )}
+                      <p style={{ margin: 0, fontSize: '14px', color: '#333' }}>
+                        {item.cantidad} x {item.nombre} — ${item.precio}
+                      </p>
+                    </div>
+                  ))}
                 </div>
 
                 {pedido.direccion && (

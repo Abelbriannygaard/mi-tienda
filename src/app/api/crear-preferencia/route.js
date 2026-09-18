@@ -40,17 +40,17 @@ export async function POST(request) {
     const preference = new Preference(client)
 
     const itemsParaMP = items.map((item) => {
-  const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null]
-    .filter(Boolean)
-    .join(' - ')
+      const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null]
+        .filter(Boolean)
+        .join(' - ')
 
-  return {
-    title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
-    quantity: item.cantidad,
-    unit_price: item.precio,
-    currency_id: 'ARS',
-  }
-})
+      return {
+        title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+        quantity: item.cantidad,
+        unit_price: item.precio,
+        currency_id: 'ARS',
+      }
+    })
 
     if (zonaEnvio && zonaEnvio.costo > 0) {
       itemsParaMP.push({
@@ -60,6 +60,15 @@ export async function POST(request) {
         currency_id: 'ARS',
       })
     }
+
+    // Guardamos también los items originales (con imagen_url) en metadata,
+    // porque Mercado Pago no permite campos custom dentro de "items".
+    const itemsOriginales = items.map((item) => ({
+      nombre: item.nombre,
+      color: item.color || null,
+      talle: item.talle || null,
+      imagen_url: item.imagen_url || null,
+    }))
 
     const resultado = await preference.create({
       body: {
@@ -71,6 +80,7 @@ export async function POST(request) {
         metadata: {
           datos_cliente: datosCliente,
           zona_envio: zonaEnvio,
+          items_originales: itemsOriginales,
         },
         back_urls: {
           success: 'https://tienda.dimedetiambos.com.ar/pago-exitoso',
