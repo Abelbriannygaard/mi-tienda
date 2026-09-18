@@ -89,10 +89,13 @@ export default async function PanelAdmin() {
 
                 <div style={{ marginTop: '14px', borderTop: '1px solid #f0f0f0', paddingTop: '14px' }}>
                   {(pedido.items || []).map((item, idx) => (
-                    <p key={idx} style={{ margin: '2px 0', fontSize: '14px', color: '#333' }}>
-                      {item.cantidad} x {item.nombre} — ${item.precio}
-                    </p>
-                  ))}
+  <p key={idx} style={{ margin: '2px 0', fontSize: '14px', color: '#333' }}>
+    {item.cantidad} x {item.nombre}
+    {item.talle ? ` (Talle ${item.talle})` : ''}
+    {item.color ? ` - ${item.color}` : ''}
+    {' '}— ${item.precio}
+  </p>
+))}
                 </div>
 
                 {pedido.direccion && (

@@ -39,12 +39,18 @@ export async function POST(request) {
 
     const preference = new Preference(client)
 
-    const itemsParaMP = items.map((item) => ({
-      title: item.color ? `${item.nombre} (${item.color})` : item.nombre,
-      quantity: item.cantidad,
-      unit_price: item.precio,
-      currency_id: 'ARS',
-    }))
+    const itemsParaMP = items.map((item) => {
+  const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null]
+    .filter(Boolean)
+    .join(' - ')
+
+  return {
+    title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+    quantity: item.cantidad,
+    unit_price: item.precio,
+    currency_id: 'ARS',
+  }
+})
 
     if (zonaEnvio && zonaEnvio.costo > 0) {
       itemsParaMP.push({
