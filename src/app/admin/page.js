@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import CerrarSesionBoton from './CerrarSesionBoton'
 import BotonGenerarEtiqueta from './BotonGenerarEtiqueta'
 import BotonAnularFactura from './BotonAnularFactura'
+import Link from 'next/link'
 export const dynamic = 'force-dynamic'
 
 const supabaseAdmin = createClient(
@@ -25,15 +26,15 @@ export default async function PanelAdmin() {
 
   return (
     <main style={{ padding: '40px', maxWidth: '1100px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>Pedidos</h1>
         <div style={{ display: 'flex', gap: '10px' }}>
-          
+          <Link
             href="/admin/conversaciones"
             style={{ padding: '8px 16px', fontSize: '14px', border: '1px solid #009ee3', borderRadius: '8px', color: '#009ee3', textDecoration: 'none' }}
           >
             💬 Conversaciones
-          </a>
+          </Link>
           <CerrarSesionBoton />
         </div>
       </div>
@@ -144,8 +145,8 @@ export default async function PanelAdmin() {
                 <p style={{ marginTop: '10px', fontSize: '12px', color: '#aaa' }}>
                   Pedido #{pedido.id} · Pago #{pedido.mercadopago_payment_id} · {new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
                 </p>
-                                <BotonGenerarEtiqueta pedido={pedido} />
-                                <BotonAnularFactura pedido={pedido} />
+                <BotonGenerarEtiqueta pedido={pedido} />
+                <BotonAnularFactura pedido={pedido} />
               </div>
             )
           })}
