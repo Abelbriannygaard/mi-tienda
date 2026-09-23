@@ -37,13 +37,18 @@ export async function POST(request) {
 
     if (texto) {
       const hiloId = await obtenerOCrearHilo(from);
+      await asegurarCliente(from);
       await guardarMensaje(from, hiloId, "user", texto);
 
-      const historial = await obtenerHistorialDelHilo(hiloId);
-      const respuesta = await preguntarleAClaude(historial);
+      const pausado = await estaBotPausado(from);
 
-      await guardarMensaje(from, hiloId, "model", respuesta);
-      await mandarMensajeWhatsApp(paraEnviar, respuesta);
+      if (!pausado) {
+        const historial = await obtenerHistorialDelHilo(hiloId);
+        const respuesta = await preguntarleAClaude(historial);
+
+        await guardarMensaje(from, hiloId, "model", respuesta);
+        await mandarMensajeWhatsApp(paraEnviar, respuesta);
+      }
     }
 
     return new Response("OK", { status: 200 });
@@ -110,6 +115,32 @@ async function guardarMensaje(numeroCliente, hiloId, rol, mensaje) {
     mensaje,
   });
 }
+
+async function estaBotPausado(numeroCliente) {
+  const { data } = await supabase
+    .from("whatsapp_clientes")
+    .select("bot_pausado")
+    .eq("numero_cliente", numeroCliente)
+    .maybeSingle();
+
+  return data?.bot_pausado || false;
+}
+
+async function asegurarCliente(numeroCliente) {
+  const { data } = await supabase
+    .from("whatsapp_clientes")
+    .select("id")
+    .eq("numero_cliente", numeroCliente)
+    .maybeSingle();
+
+  if (!data) {
+    await supabase
+      .from("whatsapp_clientes")
+      .insert({ numero_cliente: numeroCliente });
+  }
+}
+
+
 
 async function obtenerHistorialDelHilo(hiloId) {
   const { data } = await supabase
@@ -179,7 +210,7 @@ Si te preguntan sobre un reclamo, un problema con un pedido ya hecho, o cualquie
 `;
 
   const mensajes = historial.map((m) => ({
-    role: m.rol === "model" ? "assistant" : "user",
+    role: m.rol === "model" || m.rol === "admin" ? "assistant" : "user",
     content: m.mensaje,
   }));
 
