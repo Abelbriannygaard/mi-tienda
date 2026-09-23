@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { generarFactura } from '@/lib/generarFactura'
+import { esAdmin } from '@/lib/adminAuth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,6 +9,10 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(request) {
+  if (!(await esAdmin())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
   try {
     const { pedidoId } = await request.json()
 

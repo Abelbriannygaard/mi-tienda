@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Afip from '@afipsdk/afip.js'
+import { esAdmin } from '@/lib/adminAuth'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -12,6 +13,10 @@ const TIPO_FACTURA = 11 // Factura C
 const TIPO_NOTA_CREDITO = 13 // Nota de Crédito C
 
 export async function POST(request) {
+  if (!(await esAdmin())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
   try {
     const { pedidoId } = await request.json()
 
