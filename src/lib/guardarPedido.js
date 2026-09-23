@@ -16,9 +16,7 @@ export async function guardarPedido(paymentId) {
   const payment = new Payment(client)
   const pago = await payment.get({ id: paymentId })
 
-  console.log('METADATA COMPLETA:', JSON.stringify(pago.metadata, null, 2))
-
-  const itemsOriginales = pago.metadata?.items_originales || []
+    const itemsOriginales = pago.metadata?.items_originales || []
 
   const items = pago.additional_info?.items?.map((item, idx) => ({
     nombre: item.title,
