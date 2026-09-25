@@ -47,6 +47,59 @@ export default function Conversaciones() {
   const finRef = useRef(null)
   const saltarScrollRef = useRef(false)
 
+  const [notisActivas, setNotisActivas] = useState(false)
+  const [activandoNotis, setActivandoNotis] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
+    navigator.serviceWorker.getRegistration().then(async (reg) => {
+      if (reg) {
+        const sub = await reg.pushManager.getSubscription()
+        setNotisActivas(Boolean(sub))
+      }
+    })
+  }, [])
+
+  async function activarNotificaciones() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('Este navegador no soporta notificaciones push.')
+      return
+    }
+    setActivandoNotis(true)
+    try {
+      const permiso = await Notification.requestPermission()
+      if (permiso !== 'granted') {
+        alert('No diste el permiso de notificaciones. Podés activarlo más tarde desde la configuración del navegador.')
+        return
+      }
+
+      const registro = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+
+      const clavePublica = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      const suscripcion = await registro.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(clavePublica),
+      })
+
+      const res = await fetch('/api/admin/push-suscripcion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(suscripcion),
+      })
+
+      if (res.ok) {
+        setNotisActivas(true)
+      } else {
+        alert('No se pudo activar la notificación, intentá de nuevo.')
+      }
+    } catch (e) {
+      alert('Error al activar las notificaciones: ' + e.message)
+    } finally {
+      setActivandoNotis(false)
+    }
+  }
+
   async function cargarLista() {
     try {
       const res = await fetch('/api/admin/conversaciones', { cache: 'no-store' })
@@ -285,7 +338,27 @@ export default function Conversaciones() {
     <main style={{ ...contenedor, height: 'auto', minHeight: '100dvh' }}>
       <div style={{ padding: '16px', borderBottom: '1px solid #e5e5e5', display: 'flex', alignItems: 'center', gap: '12px' }}>
         <Link href="/admin" style={{ fontSize: '22px', textDecoration: 'none', color: '#333' }}>←</Link>
-        <h1 style={{ margin: 0, fontSize: '20px' }}>Conversaciones</h1>
+        <h1 style={{ margin: 0, fontSize: '20px', flex: 1 }}>Conversaciones</h1>
+        {!notisActivas ? (
+          <button
+            onClick={activarNotificaciones}
+            disabled={activandoNotis}
+            style={{
+              padding: '8px 12px',
+              fontSize: '13px',
+              fontWeight: '600',
+              borderRadius: '8px',
+              border: '1px solid #009ee3',
+              backgroundColor: '#fff',
+              color: '#009ee3',
+              cursor: activandoNotis ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {activandoNotis ? 'Activando...' : '🔔 Activar avisos'}
+          </button>
+        ) : (
+          <span style={{ fontSize: '13px', color: '#15803d' }}>🔔 Avisos activos</span>
+        )}
       </div>
 
       {cargando && <p style={{ padding: '16px', color: '#888' }}>Cargando...</p>}
@@ -323,4 +396,14 @@ export default function Conversaciones() {
       ))}
     </main>
   )
+}
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = window.atob(base64)
+  const outputArray = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i)
+  }
+  return outputArray
 }
