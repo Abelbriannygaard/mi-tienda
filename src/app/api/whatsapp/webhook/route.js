@@ -225,12 +225,19 @@ Si te preguntan sobre un reclamo, un problema con un pedido ya hecho, o cualquie
     headers: {
       "x-api-key": process.env.ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01",
+      "anthropic-beta": "prompt-caching-2024-07-31",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 500,
-      system: contextoDelNegocio,
+      system: [
+        {
+          type: "text",
+          text: contextoDelNegocio,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       messages: mensajes,
     }),
   });
