@@ -1,11 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
+import webpush from "web-push";
+
+webpush.setVapidDetails(
+  "mailto:dimedetiambos@gmail.com",
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+);
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-const MAXIMO_HILOS_POR_CLIENTE = 5;
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -39,6 +44,7 @@ export async function POST(request) {
       const hiloId = await obtenerOCrearHilo(from);
       await asegurarCliente(from);
       await guardarMensaje(from, hiloId, "user", texto);
+      await avisarNuevoMensaje(from, texto);
 
       const pausado = await estaBotPausado(from);
 
@@ -83,7 +89,7 @@ async function obtenerOCrearHilo(numeroCliente) {
 
   // Cambió el día: arranca un hilo nuevo
   const nuevoHiloId = crypto.randomUUID();
-    return nuevoHiloId;
+  return nuevoHiloId;
 }
 
 async function guardarMensaje(numeroCliente, hiloId, rol, mensaje) {
@@ -117,6 +123,41 @@ async function asegurarCliente(numeroCliente) {
       .from("whatsapp_clientes")
       .insert({ numero_cliente: numeroCliente });
   }
+}
+
+async function avisarNuevoMensaje(numeroCliente, texto) {
+  const { data: suscripciones } = await supabase
+    .from("push_suscripciones")
+    .select("id, endpoint, p256dh, auth");
+
+  if (!suscripciones || suscripciones.length === 0) return;
+
+  const payload = JSON.stringify({
+    titulo: "Nuevo mensaje de WhatsApp",
+    cuerpo: texto.length > 100 ? texto.slice(0, 100) + "..." : texto,
+    url: `/admin/conversaciones`,
+  });
+
+  await Promise.all(
+    suscripciones.map(async (s) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: s.endpoint,
+            keys: { p256dh: s.p256dh, auth: s.auth },
+          },
+          payload
+        );
+      } catch (error) {
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          // La suscripción ya no existe (se desinstaló la app, etc.)
+          await supabase.from("push_suscripciones").delete().eq("id", s.id);
+        } else {
+          console.error("Error al mandar notificación push:", error.message);
+        }
+      }
+    })
+  );
 }
 
 async function obtenerHistorialDelHilo(hiloId) {
