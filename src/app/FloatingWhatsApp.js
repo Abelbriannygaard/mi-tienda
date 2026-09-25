@@ -37,6 +37,10 @@ export default function FloatingWhatsApp() {
     }
   }, [pathname])
 
+if (pathname?.startsWith('/admin')) {
+    return null
+  }
+
   const link = `https://wa.me/${NUMERO_WHATSAPP}?text=${encodeURIComponent(mensaje)}`
 
   return (
