@@ -83,28 +83,7 @@ async function obtenerOCrearHilo(numeroCliente) {
 
   // Cambió el día: arranca un hilo nuevo
   const nuevoHiloId = crypto.randomUUID();
-  await limpiarHilosViejos(numeroCliente);
-  return nuevoHiloId;
-}
-
-async function limpiarHilosViejos(numeroCliente) {
-  const { data: mensajes } = await supabase
-    .from("whatsapp_conversaciones")
-    .select("hilo_id, created_at")
-    .eq("numero_cliente", numeroCliente)
-    .order("created_at", { ascending: false });
-
-  if (!mensajes) return;
-
-  const hilosOrdenados = [...new Set(mensajes.map((m) => m.hilo_id))];
-
-  if (hilosOrdenados.length >= MAXIMO_HILOS_POR_CLIENTE) {
-    const hilosAEliminar = hilosOrdenados.slice(MAXIMO_HILOS_POR_CLIENTE - 1);
-    await supabase
-      .from("whatsapp_conversaciones")
-      .delete()
-      .in("hilo_id", hilosAEliminar);
-  }
+    return nuevoHiloId;
 }
 
 async function guardarMensaje(numeroCliente, hiloId, rol, mensaje) {

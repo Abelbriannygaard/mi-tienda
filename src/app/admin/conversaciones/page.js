@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 
 const ZONA = 'America/Argentina/Buenos_Aires'
 
@@ -22,6 +23,12 @@ function traducirError(mensaje) {
   return mensaje || 'No se pudo enviar el mensaje'
 }
 
+function fusionarMensajes(actuales, nuevos) {
+  const mapa = new Map(actuales.map((m) => [m.id, m]))
+  for (const m of nuevos) mapa.set(m.id, m)
+  return Array.from(mapa.values()).sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+}
+
 const estilosRol = {
   user: { fondo: '#f1f1f1', alinear: 'flex-start', etiqueta: 'Cliente' },
   model: { fondo: '#dbeafe', alinear: 'flex-end', etiqueta: 'Bot' },
@@ -32,11 +39,13 @@ export default function Conversaciones() {
   const [lista, setLista] = useState([])
   const [cargando, setCargando] = useState(true)
   const [abierto, setAbierto] = useState(null)
-  const [chat, setChat] = useState({ mensajes: [], bot_pausado: false, nombre_cliente: null })
+  const [chat, setChat] = useState({ mensajes: [], bot_pausado: false, nombre_cliente: null, hayMas: false })
+  const [cargandoViejos, setCargandoViejos] = useState(false)
   const [texto, setTexto] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
   const finRef = useRef(null)
+  const saltarScrollRef = useRef(false)
 
   async function cargarLista() {
     try {
@@ -61,9 +70,38 @@ export default function Conversaciones() {
         window.location.href = '/admin/login'
         return
       }
-      setChat(await res.json())
+      const data = await res.json()
+      setChat((prev) => ({
+        mensajes: fusionarMensajes(prev.mensajes, data.mensajes || []),
+        bot_pausado: data.bot_pausado,
+        nombre_cliente: data.nombre_cliente,
+        hayMas: data.hay_mas,
+      }))
     } catch (e) {
       // se reintenta en el próximo ciclo
+    }
+  }
+
+  async function cargarMasAntiguos() {
+    if (!abierto || chat.mensajes.length === 0 || cargandoViejos) return
+    setCargandoViejos(true)
+    saltarScrollRef.current = true
+    try {
+      const cursor = chat.mensajes[0].created_at
+      const res = await fetch(
+        `/api/admin/conversaciones?numero=${abierto}&antes=${encodeURIComponent(cursor)}`,
+        { cache: 'no-store' }
+      )
+      const data = await res.json()
+      setChat((prev) => ({
+        ...prev,
+        mensajes: fusionarMensajes(prev.mensajes, data.mensajes || []),
+        hayMas: data.hay_mas,
+      }))
+    } catch (e) {
+      // el botón queda disponible para reintentar
+    } finally {
+      setCargandoViejos(false)
     }
   }
 
@@ -81,6 +119,10 @@ export default function Conversaciones() {
   }, [abierto])
 
   useEffect(() => {
+    if (saltarScrollRef.current) {
+      saltarScrollRef.current = false
+      return
+    }
     finRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chat.mensajes.length, abierto])
 
@@ -162,10 +204,30 @@ export default function Conversaciones() {
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#fafafa' }}>
-          {chat.mensajes.map((m, i) => {
+          {chat.hayMas && (
+            <button
+              onClick={cargarMasAntiguos}
+              disabled={cargandoViejos}
+              style={{
+                alignSelf: 'center',
+                padding: '6px 14px',
+                fontSize: '13px',
+                borderRadius: '999px',
+                border: '1px solid #ccc',
+                backgroundColor: '#fff',
+                color: '#555',
+                cursor: cargandoViejos ? 'not-allowed' : 'pointer',
+                marginBottom: '4px',
+              }}
+            >
+              {cargandoViejos ? 'Cargando...' : 'Cargar mensajes anteriores'}
+            </button>
+          )}
+
+          {chat.mensajes.map((m) => {
             const e = estilosRol[m.rol] || estilosRol.user
             return (
-              <div key={i} style={{ alignSelf: e.alinear, maxWidth: '85%' }}>
+              <div key={m.id} style={{ alignSelf: e.alinear, maxWidth: '85%' }}>
                 <div style={{ backgroundColor: e.fondo, padding: '10px 12px', borderRadius: '12px', fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                   {m.mensaje}
                 </div>
@@ -186,6 +248,13 @@ export default function Conversaciones() {
           <textarea
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => {
+              const esCelu = window.matchMedia('(pointer: coarse)').matches
+              if (e.key === 'Enter' && !e.shiftKey && !esCelu && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                enviar()
+              }
+            }}
             placeholder="Escribí tu mensaje..."
             rows={2}
             style={{ flex: 1, padding: '10px', fontSize: '15px', borderRadius: '8px', border: '1px solid #ccc', resize: 'none', fontFamily: 'inherit' }}
@@ -215,7 +284,7 @@ export default function Conversaciones() {
   return (
     <main style={{ ...contenedor, height: 'auto', minHeight: '100dvh' }}>
       <div style={{ padding: '16px', borderBottom: '1px solid #e5e5e5', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <a href="/admin" style={{ fontSize: '22px', textDecoration: 'none', color: '#333' }}>←</a>
+        <Link href="/admin" style={{ fontSize: '22px', textDecoration: 'none', color: '#333' }}>←</Link>
         <h1 style={{ margin: 0, fontSize: '20px' }}>Conversaciones</h1>
       </div>
 
@@ -228,7 +297,7 @@ export default function Conversaciones() {
         <div
           key={c.numero_cliente}
           onClick={() => {
-            setChat({ mensajes: [], bot_pausado: c.bot_pausado, nombre_cliente: c.nombre_cliente })
+            setChat({ mensajes: [], bot_pausado: c.bot_pausado, nombre_cliente: c.nombre_cliente, hayMas: false })
             setError('')
             setTexto('')
             setAbierto(c.numero_cliente)
