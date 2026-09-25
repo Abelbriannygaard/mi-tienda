@@ -140,18 +140,24 @@ async function asegurarCliente(numeroCliente) {
   }
 }
 
-
-
 async function obtenerHistorialDelHilo(hiloId) {
   const { data } = await supabase
     .from("whatsapp_conversaciones")
     .select("rol, mensaje")
     .eq("hilo_id", hiloId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(20);
 
-  return data || [];
+  const historial = (data || []).reverse();
+
+  // La API exige que la conversación arranque con un mensaje del cliente
+  while (historial.length > 0 && historial[0].rol !== "user") {
+    historial.shift();
+  }
+
+  return historial;
 }
+
 async function obtenerProductos() {
   const { data } = await supabase
     .from("productos")
