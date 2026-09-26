@@ -89,7 +89,7 @@ export default function TestimoniosCarousel() {
           >
             <Estrellas cantidad={t.estrellas} />
             <p className="mt-3 font-serif text-[15px] leading-snug text-[#2E2A26]">
-              “{t.texto}”
+              "{t.texto}"
             </p>
           </div>
         ))}
