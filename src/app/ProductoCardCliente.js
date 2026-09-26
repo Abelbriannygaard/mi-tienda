@@ -71,7 +71,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
             <img
               src={fotoActiva.imagen_url}
               alt={`${producto.nombre} - ${fotoActiva.color}`}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
             />
           )}
         </div>
@@ -82,7 +82,6 @@ export default function ProductoCardCliente({ producto, variantes }) {
           {primeraFotoPorColor.slice(0, 8).map((f) => (
             <button
               key={f.color}
-              onMouseEnter={() => setFotoActiva(f)}
               onClick={(e) => {
                 e.preventDefault()
                 setFotoActiva(f)
@@ -94,7 +93,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
               }`}
               title={f.color}
             >
-              <img src={f.imagen_url} alt={f.color} className="h-full w-full object-cover" />
+              <img src={f.imagen_url} alt={f.color} className="h-full w-full object-contain" />
             </button>
           ))}
         </div>
