@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import ProductoCard from './ProductoCard'
 import CarritoIcono from './CarritoIcono'
+import TestimoniosCarousel from './TestimoniosCarousel'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +16,7 @@ export default async function Home() {
         <span className="font-serif text-xl text-[#2E2A26]">Dimedeti Ambos</span>
         <CarritoIcono />
       </header>
-
+      <TestimoniosCarousel />
       <div className="px-6 md:px-10 py-10">
         <div className="flex flex-wrap gap-6">
           {productos?.map((producto) => (
