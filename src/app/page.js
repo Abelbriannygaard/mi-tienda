@@ -12,8 +12,18 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-[#FAF6F0]">
-      <header className="flex items-center justify-between px-6 py-5 md:px-10 border-b border-[#E4DCCF]">
-        <span className="font-serif text-xl text-[#2E2A26]">Dimedeti Ambos</span>
+      <header
+        className="flex items-center justify-between border-b border-[#E4DCCF] px-6 py-10 md:px-10 md:py-14"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, rgba(250,246,240,0.95) 0%, rgba(250,246,240,0.75) 50%, rgba(250,246,240,0.35) 100%), url(/img/fondo-tela.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'right center',
+        }}
+      >
+        <span className="font-serif text-3xl tracking-tight text-[#2E2A26] md:text-4xl">
+          Dimedeti Ambos
+        </span>
         <CarritoIcono />
       </header>
       <TestimoniosCarousel />
