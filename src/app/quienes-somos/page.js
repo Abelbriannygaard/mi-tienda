@@ -4,7 +4,17 @@ export const metadata = {
 
 export default function QuienesSomos() {
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
+    <main
+      className="min-h-screen"
+      style={{
+        backgroundImage:
+          'linear-gradient(rgba(250,246,240,0.88), rgba(250,246,240,0.94)), url(/img/fondo-tela-negra.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center top',
+        backgroundAttachment: 'fixed',
+      }}
+    >
+      <div className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="font-serif text-3xl text-[#2E2A26]">Quiénes somos</h1>
 
       <div className="mt-8 space-y-6 text-[15px] leading-relaxed text-[#3A352F]">
@@ -41,6 +51,7 @@ export default function QuienesSomos() {
           con mirada de diseño, hechas con la misma dedicación artesanal con la que antes
           armábamos vestidos de novia.
         </p>
+      </div>
       </div>
     </main>
   )
