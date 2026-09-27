@@ -5,11 +5,8 @@ export default function Header() {
     <header
       style={{
         padding: '14px 40px',
-        borderBottom: '1px solid #E4DCCF',
-        backgroundImage:
-          'linear-gradient(to right, rgba(250,246,240,0.97) 0%, rgba(250,246,240,0.88) 45%, rgba(250,246,240,0.55) 100%), url(/img/fondo-tela.jpg)',
-        backgroundSize: 'cover',
-        backgroundPosition: 'right center',
+        borderBottom: '1px solid #eee',
+        backgroundColor: '#fff',
       }}
     >
       <Link
@@ -30,7 +27,7 @@ export default function Header() {
           style={{
             fontSize: '20px',
             fontWeight: 'bold',
-            color: '#2E2A26',
+            color: '#333',
             letterSpacing: '0.3px',
           }}
         >

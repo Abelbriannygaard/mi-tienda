@@ -27,7 +27,16 @@ export default async function Home() {
         <CarritoIcono />
       </header>
       <TestimoniosCarousel />
-      <div className="px-6 md:px-10 py-10">
+      <div
+        className="px-6 md:px-10 py-10"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(250,246,240,0.94), rgba(250,246,240,0.94)), url(/img/fondo-tela.jpg)',
+          backgroundSize: '900px auto',
+          backgroundRepeat: 'repeat',
+          backgroundPosition: 'top left',
+        }}
+      >
         <div className="flex flex-wrap gap-6">
           {productos?.map((producto) => (
             <ProductoCard key={producto.id} producto={producto} />
