@@ -79,7 +79,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
 
       {primeraFotoPorColor.length > 1 && (
         <div className="flex gap-1.5 px-3 pt-3 flex-wrap">
-          {primeraFotoPorColor.slice(0, 8).map((f) => (
+          {primeraFotoPorColor.slice(0, 4).map((f) => (
             <button
               key={f.color}
               onClick={(e) => {
