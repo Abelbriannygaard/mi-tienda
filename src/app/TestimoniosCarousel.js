@@ -38,19 +38,25 @@ export default function TestimoniosCarousel() {
   const [indice, setIndice] = useState(0)
   const scrollRef = useRef(null)
   const pausadoRef = useRef(false)
+  const movimientoIntencionalRef = useRef(false)
 
   // Autoplay: avanza solo cada 4.5s, salvo que el usuario esté interactuando
   useEffect(() => {
     const intervalo = setInterval(() => {
       if (!pausadoRef.current) {
+        movimientoIntencionalRef.current = true
         setIndice((i) => (i + 1) % TESTIMONIOS.length)
       }
     }, 4500)
     return () => clearInterval(intervalo)
   }, [])
 
-  // Cuando cambia el índice (por autoplay o por clic en los puntos), scrollea a esa tarjeta
+  // Solo movemos el scroll a mano si el cambio de índice vino de un clic
+  // o del autoplay, no si vino de que el usuario ya scrolleó él mismo.
   useEffect(() => {
+    if (!movimientoIntencionalRef.current) return
+    movimientoIntencionalRef.current = false
+
     const contenedor = scrollRef.current
     if (!contenedor) return
     const tarjeta = contenedor.children[indice]
@@ -65,6 +71,11 @@ export default function TestimoniosCarousel() {
     const anchoTarjeta = contenedor.children[0]?.offsetWidth || 1
     const nuevoIndice = Math.round(contenedor.scrollLeft / anchoTarjeta)
     setIndice(nuevoIndice)
+  }
+
+  function irAlTestimonio(i) {
+    movimientoIntencionalRef.current = true
+    setIndice(i)
   }
 
   return (
@@ -99,7 +110,7 @@ export default function TestimoniosCarousel() {
         {TESTIMONIOS.map((_, i) => (
           <button
             key={i}
-            onClick={() => setIndice(i)}
+            onClick={() => irAlTestimonio(i)}
             aria-label={`Ver testimonio ${i + 1}`}
             className={`h-2 w-2 rounded-full transition ${
               i === indice ? 'bg-[#2F6B63]' : 'bg-[#CFC7B8]'
