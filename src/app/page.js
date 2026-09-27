@@ -28,13 +28,13 @@ export default async function Home() {
       </header>
       <TestimoniosCarousel />
       <div
-        className="px-6 md:px-10 py-10"
+        className="relative px-6 md:px-10 py-10"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(250,246,240,0.94), rgba(250,246,240,0.94)), url(/img/fondo-tela.jpg)',
-          backgroundSize: '900px auto',
-          backgroundRepeat: 'repeat',
-          backgroundPosition: 'top left',
+            'linear-gradient(rgba(250,246,240,0.75), rgba(250,246,240,0.85)), url(/img/fondo-tela.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
+          backgroundAttachment: 'fixed',
         }}
       >
         <div className="flex flex-wrap gap-6">
