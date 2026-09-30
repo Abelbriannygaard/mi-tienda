@@ -225,6 +225,12 @@ export default function ProductoDetalle({ producto, variantes }) {
                     </option>
                   ))}
                 </select>
+                <Link
+                  href="/guia-de-talles#mujer"
+                  className="mt-1.5 inline-block text-xs font-medium text-[#2F6B63] underline hover:text-[#28584F]"
+                >
+                  ¿Cómo elegir mi talle?
+                </Link>
               </div>
             )}
 
