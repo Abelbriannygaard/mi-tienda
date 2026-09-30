@@ -39,7 +39,7 @@ export default function BrandBrickMP() {
 
         controller = await mp.bricks().create('brand', 'brandBrick_container', {
           customization: {
-            texts: {
+            text: {
               valueProp: 'security',
               align: 'left',
               useCustomFont: false,
