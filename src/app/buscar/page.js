@@ -1,17 +1,25 @@
 import { supabase } from '@/lib/supabase'
 import ProductoCard from '../ProductoCard'
+import Fuse from 'fuse.js'
 
 export default async function BuscarPage({ searchParams }) {
   const params = await searchParams
   const query = params?.q || ''
 
   let productos = []
+
   if (query) {
-    const { data } = await supabase
+    const { data: todosLosProductos } = await supabase
       .from('productos')
       .select('*')
-      .ilike('nombre', `%${query}%`)
-    productos = data || []
+
+    const fuse = new Fuse(todosLosProductos || [], {
+      keys: ['nombre', 'descripcion'],
+      threshold: 0.4,
+      ignoreLocation: true,
+    })
+
+    productos = fuse.search(query).map((resultado) => resultado.item)
   }
 
   return (
