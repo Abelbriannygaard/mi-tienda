@@ -15,8 +15,9 @@ export default async function BuscarPage({ searchParams }) {
 
     const fuse = new Fuse(todosLosProductos || [], {
       keys: ['nombre', 'descripcion'],
-      threshold: 0.4,
+      threshold: 0.3,
       ignoreLocation: true,
+      useExtendedSearch: true,
     })
 
     productos = fuse.search(query).map((resultado) => resultado.item)
