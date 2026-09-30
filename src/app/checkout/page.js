@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { useCarrito } from '@/lib/carrito'
 import { useRouter } from 'next/navigation'
 import SelectorEnvio from './SelectorEnvio'
+import BrandBrickMP from './BrandBrickMP'
 
 export default function Checkout() {
   const { items, total, totalProductos, costoEnvio, zonaEnvio, pagar } = useCarrito()
@@ -46,7 +47,7 @@ export default function Checkout() {
     return null
   }
 
-    async function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
 
     if (items.length === 0) {
@@ -90,7 +91,7 @@ export default function Checkout() {
   }
 
   return (
-    <main style={{ padding: '40px', maxWidth: '600px', margin: '0 auto' }}>
+    <main style={{ padding: 'clamp(16px, 5vw, 40px)', maxWidth: '600px', margin: '0 auto' }}>
       <Script src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`} />
       <h1>Finalizar compra</h1>
       <div style={{ backgroundColor: '#f7f7f7', padding: '16px', borderRadius: '8px', marginTop: '20px' }}>
@@ -129,12 +130,12 @@ export default function Checkout() {
 
         {!esRetiro && (
           <>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <label style={{ flex: 2 }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <label style={{ flex: 2, minWidth: '140px' }}>
                 Calle *
                 <input name="calle" value={datos.calle} onChange={handleChange} style={inputStyle} />
               </label>
-              <label style={{ flex: 1 }}>
+              <label style={{ flex: 1, minWidth: '100px' }}>
                 Número *
                 <input name="numero" value={datos.numero} onChange={handleChange} style={inputStyle} />
               </label>
@@ -143,12 +144,12 @@ export default function Checkout() {
               Piso / Depto (opcional)
               <input name="pisoDepto" value={datos.pisoDepto} onChange={handleChange} style={inputStyle} placeholder="Ej: 3° B" />
             </label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <label style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <label style={{ flex: 1, minWidth: '140px' }}>
                 Ciudad *
                 <input name="ciudad" value={datos.ciudad} onChange={handleChange} style={inputStyle} />
               </label>
-              <label style={{ flex: 1 }}>
+              <label style={{ flex: 1, minWidth: '140px' }}>
                 Código Postal *
                 <input name="codigoPostal" value={datos.codigoPostal} onChange={handleChange} style={inputStyle} />
               </label>
@@ -160,6 +161,8 @@ export default function Checkout() {
           Notas adicionales (opcional)
           <textarea name="notas" value={datos.notas} onChange={handleChange} style={{ ...inputStyle, minHeight: '60px' }} />
         </label>
+
+        <BrandBrickMP />
 
         <button
           type="submit"
