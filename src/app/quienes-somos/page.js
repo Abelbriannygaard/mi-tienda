@@ -1,3 +1,5 @@
+import ReputacionML from './ReputacionML'
+
 export const metadata = {
   title: 'Quiénes somos | Dimedeti Ambos',
 }
@@ -49,8 +51,11 @@ export default function QuienesSomos() {
         <p>
           Seguimos con la misma filosofía de siempre: prendas médicas y sanitarias pensadas
           con mirada de diseño, hechas con la misma dedicación artesanal con la que antes
-          armábamos vestidos de novia.
+          armábamos vestidos de novia. Desde 2020 realizamos más de 1.000 ventas a
+          profesionales de la salud de todo el país.
         </p>
+
+        <ReputacionML />
       </div>
       </div>
     </main>
