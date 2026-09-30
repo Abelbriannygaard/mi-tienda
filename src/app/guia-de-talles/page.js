@@ -74,6 +74,57 @@ function Tabla({ columnas, filas }) {
   )
 }
 
+function FiguraMedidas() {
+  return (
+    <div className="mt-6 flex justify-center rounded-lg border border-[#E4DCCF] bg-white p-4">
+      <svg width="100%" viewBox="0 0 680 400" style={{ maxWidth: '450px' }}>
+        <defs>
+          <marker
+            id="arrowBody"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path
+              d="M2 1L8 5L2 9"
+              fill="none"
+              stroke="#1D9E75"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </marker>
+        </defs>
+        <g fill="#F1EFE8" stroke="#5F5E5A">
+          <circle cx="340" cy="60" r="28" strokeWidth="1" />
+          <rect x="255" y="105" width="22" height="135" rx="10" strokeWidth="1" />
+          <rect x="403" y="105" width="22" height="135" rx="10" strokeWidth="1" />
+          <path d="M290 100 L390 100 L400 260 L280 260 Z" strokeWidth="1" />
+          <path d="M285 260 L335 260 L330 398 L290 398 Z" strokeWidth="1" />
+          <path d="M345 260 L395 260 L390 398 L350 398 Z" strokeWidth="1" />
+        </g>
+        <ellipse cx="340" cy="130" rx="57" ry="13" fill="none" stroke="#1D9E75" strokeWidth="1.2" strokeDasharray="4 3" />
+        <path d="M322 143 Q340 153 358 143" fill="none" stroke="#1D9E75" strokeWidth="1.5" markerEnd="url(#arrowBody)" />
+        <text x="458" y="126" fontSize="14" fontWeight="500" fill="#085041">Contorno de pecho</text>
+        <text x="458" y="142" fontSize="12" fill="#5C564C">rodeá la parte más ancha</text>
+
+        <ellipse cx="340" cy="195" rx="53" ry="12" fill="none" stroke="#1D9E75" strokeWidth="1.2" strokeDasharray="4 3" />
+        <path d="M319 206 Q340 215 361 206" fill="none" stroke="#1D9E75" strokeWidth="1.5" markerEnd="url(#arrowBody)" />
+        <text x="458" y="191" fontSize="14" fontWeight="500" fill="#085041">Contorno de cintura</text>
+        <text x="458" y="207" fontSize="12" fill="#5C564C">en la parte más angosta</text>
+
+        <ellipse cx="340" cy="255" rx="78" ry="14" fill="none" stroke="#1D9E75" strokeWidth="1.2" strokeDasharray="4 3" />
+        <path d="M310 269 Q340 280 370 269" fill="none" stroke="#1D9E75" strokeWidth="1.5" markerEnd="url(#arrowBody)" />
+        <text x="458" y="251" fontSize="14" fontWeight="500" fill="#085041">Contorno de cadera</text>
+        <text x="458" y="267" fontSize="12" fill="#5C564C">en la parte más ancha</text>
+      </svg>
+    </div>
+  )
+}
+
 export default function GuiaDeTalles() {
   return (
     <main
@@ -108,6 +159,7 @@ export default function GuiaDeTalles() {
             Medidas del cuerpo. Cada rango va del mínimo al máximo de ese talle.
           </p>
           <Tabla columnas={COLUMNAS_HOMBRE} filas={FILAS_HOMBRE} />
+          <FiguraMedidas />
         </section>
 
         <h2 className="mt-12 font-serif text-2xl text-[#2E2A26]">Cómo elegir tu talle</h2>
