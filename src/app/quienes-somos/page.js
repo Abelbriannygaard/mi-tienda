@@ -27,6 +27,29 @@ export default function QuienesSomos() {
           mayoría de las opciones son básicas y todas iguales.
         </p>
 
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <video
+           src="/video/proceso-corte.mp4"
+             autoPlay
+             loop
+             muted
+             playsInline
+             className="w-full rounded-xl border border-[#E4DCCF]"
+          />
+           <video
+             src="/video/proceso-costura.mp4"
+             autoPlay
+             loop
+             muted
+             playsInline
+             className="w-full rounded-xl border border-[#E4DCCF]"
+         />
+         </div>
+
+<p className="mt-2 text-xs text-[#8A8378]">
+  Un oficio de familia: aprendí a cortar y coser con mi mamá, modista de toda la vida.
+</p>
+        
         <p>
           Esa mirada de diseño no nació pensando en ambos médicos, sino en vestidos de novia.
           Ese era nuestro trabajo antes de 2020. Pero con la pandemia, las restricciones para
