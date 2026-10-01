@@ -7,15 +7,9 @@ import Footer from './Footer'
 export const metadata = {
   title: 'Mi Tienda',
   description: 'Tienda online',
-  manifest: '/manifest.json',
   icons: {
     icon: '/icon-192.png',
     apple: '/apple-touch-icon.png',
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'Dimedeti Admin',
   },
 }
 
