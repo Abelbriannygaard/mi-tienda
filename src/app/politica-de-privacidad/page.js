@@ -4,10 +4,10 @@ export const metadata = {
 
 // COMPLETÁ estos datos antes de publicar.
 const TITULAR = {
-  nombre: 'COMPLETAR: nombre y apellido o razón social',
-  cuit: 'COMPLETAR: CUIT',
-  domicilio: 'COMPLETAR: domicilio',
-  email: 'COMPLETAR: email de contacto',
+  nombre: 'ABEL BRIAN NYGAARD',
+  cuit: '20-31943343-1',
+  domicilio: 'Posadas 2646, Villa Libertad,GBA, CP 1650',
+  email: 'negocios@dimedetiambos.com.ar',
 }
 
 const FECHA_ACTUALIZACION = 'octubre de 2026'
