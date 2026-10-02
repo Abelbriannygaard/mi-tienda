@@ -18,7 +18,7 @@ export default function Footer() {
           <p className="mt-2 max-w-xs text-sm text-[#8A8378]">
             Indumentaria médica y sanitaria con diseño propio, hace más de 5 años.
           </p>
-          <p className="mt-3 text-sm text-[#8A8378]">CUIT: 20-31943349-1</p>
+          <p className="mt-3 text-sm text-[#8A8378]">CUIT: 20-31943343-1</p>
         </div>
 
         <div>
