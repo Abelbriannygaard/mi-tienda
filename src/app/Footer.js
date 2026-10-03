@@ -25,6 +25,11 @@ export default function Footer() {
           <h4 className="text-sm font-semibold text-[#2E2A26]">Ayuda</h4>
           <ul className="mt-2 space-y-2 text-sm text-[#8A8378]">
             <li>
+              <Link href="/guia-de-talles" className="hover:text-[#2F6B63]">
+                Guía de talles
+              </Link>
+            </li>
+            <li>
               <Link href="/politica-de-cambios" className="hover:text-[#2F6B63]">
                 Política de cambios
               </Link>
@@ -35,6 +40,23 @@ export default function Footer() {
               </Link>
             </li>
           </ul>
+        </div>
+
+        <div>
+          <h4 className="text-sm font-semibold text-[#2E2A26]">Información legal</h4>
+          <ul className="mt-2 space-y-2 text-sm text-[#8A8378]">
+            <li>
+              <Link href="/terminos-y-condiciones" className="hover:text-[#2F6B63]">
+                Términos y condiciones
+              </Link>
+            </li>
+            <li>
+              <Link href="/politica-de-privacidad" className="hover:text-[#2F6B63]">
+                Política de privacidad
+              </Link>
+            </li>
+          </ul>
+          {/* Acá va el sello de Data Fiscal (ARCA) cuando tengamos el código */}
         </div>
       </div>
 
