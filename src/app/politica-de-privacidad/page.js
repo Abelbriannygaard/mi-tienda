@@ -6,7 +6,7 @@ export const metadata = {
 const TITULAR = {
   nombre: 'ABEL BRIAN NYGAARD',
   cuit: '20-31943343-1',
-  domicilio: 'Posadas 2646, Villa Libertad,GBA, CP 1650',
+  domicilio: 'Posadas 2646, Villa Libertad, Provincia de Buenos Aires, CP 1650',
   email: 'negocios@dimedetiambos.com.ar',
 }
 
