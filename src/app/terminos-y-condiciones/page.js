@@ -8,7 +8,7 @@ export const metadata = {
 const TITULAR = {
   nombre: 'ABEL BRIAN NYGAARD',
   cuit: '20-31943343-1',
-  domicilio: 'Posadas 2646, Villa Libertad,GBA, CP 1650',
+  domicilio: 'Posadas 2646, Villa Libertad, Provincia de Buenos Aires, CP 1650',
   email: 'negocios@dimedetiambos.com.ar',
 }
 
@@ -64,11 +64,11 @@ export default function TerminosYCondiciones() {
 
         <Seccion titulo="Envíos y retiro">
           <p>
-            El costo y las opciones de envío se calculan en el checkout según el código postal
-            de destino. También ofrecemos retiro en persona. Los plazos de entrega son
-            estimados y dependen de la empresa de transporte. COMPLETAR: plazo de preparación
-            del pedido.
-          </p>
+  El costo y las opciones de envío se calculan en el checkout según el código postal
+  de destino. También ofrecemos retiro en persona. El plazo de preparación del pedido
+  es de 4 a 12 días corridos, según la demanda del momento. Una vez despachado, el
+  plazo de entrega depende de la empresa de transporte y es estimado.
+</p>
         </Seccion>
 
         <Seccion titulo="Facturación">
