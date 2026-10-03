@@ -6,8 +6,8 @@ export const metadata = {
 
 // COMPLETÁ estos datos antes de publicar.
 const TITULAR = {
-  nombre: 'COMPLETAR: nombre y apellido o razón social',
-  cuit: 'COMPLETAR: CUIT',
+  nombre: 'ABEL BRIAN NYGAARD',
+  cuit: '20-31943343-1',
   domicilio: 'COMPLETAR: domicilio',
   email: 'COMPLETAR: email de contacto',
 }
