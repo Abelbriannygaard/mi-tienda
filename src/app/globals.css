@@ -18,3 +18,19 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+/* Pegar al final de src/app/globals.css */
+.dmt-logo-flotante{
+  position:fixed; left:18px; bottom:18px; z-index:9999;
+  width:72px; height:72px; border-radius:50%;
+  background:#4b4b4d; display:block;
+  box-shadow:0 4px 14px rgba(0,0,0,.35);
+  animation:dmt-rebote 3s ease-in-out infinite;
+}
+.dmt-logo-flotante img{ width:100%; height:100%; border-radius:50%; display:block; }
+.dmt-logo-flotante::before{
+  content:""; position:absolute; inset:0; border-radius:50%;
+  border:2px solid #c0c4cc; animation:dmt-pulso 2s ease-out infinite; pointer-events:none;
+}
+@keyframes dmt-pulso{ 0%{transform:scale(1);opacity:.8} 100%{transform:scale(1.7);opacity:0} }
+@keyframes dmt-rebote{ 0%,80%,100%{transform:translateY(0)} 90%{transform:translateY(-8px)} }
+@media (prefers-reduced-motion:reduce){ .dmt-logo-flotante,.dmt-logo-flotante::before{animation:none} }
