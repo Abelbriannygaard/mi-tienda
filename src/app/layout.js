@@ -2,7 +2,6 @@ import { CarritoProvider } from '@/lib/carrito'
 import Header from './Header'
 import './globals.css'
 import FloatingWhatsApp from './FloatingWhatsApp'
-import FloatingLogo from './FloatingLogo'
 import Footer from './Footer'
 
 export const metadata = {
@@ -26,7 +25,6 @@ export default function RootLayout({ children }) {
           <Header />
           {children}
           <FloatingWhatsApp />
-          <FloatingLogo />
           <Footer />
         </CarritoProvider>
       </body>

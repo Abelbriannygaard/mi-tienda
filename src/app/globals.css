@@ -19,18 +19,43 @@ body {
   font-family: var(--font-sans);
 }
 /* Pegar al final de src/app/globals.css */
-.dmt-logo-flotante{
-  position:fixed; left:18px; bottom:18px; z-index:9999;
-  width:72px; height:72px; border-radius:50%;
-  background:#4b4b4d; display:block;
-  box-shadow:0 4px 14px rgba(0,0,0,.35);
-  animation:dmt-rebote 3s ease-in-out infinite;
+/* (borrá antes el bloque viejo del logo flotante: .dmt-logo-flotante) */
+
+/* Achicar / agrandar suave */
+.dmt-logo-img{ display:block; transition:height .3s ease; }
+
+/* 1) Entrada: desliza desde la izquierda, se revela con borde redondeado
+      (como la trompa de un auto), frena y rebota un poco. Una sola vez. */
+.dmt-entrada{
+  display:inline-flex;
+  animation:dmt-llegada 1.1s cubic-bezier(.22,.8,.3,1) both;
 }
-.dmt-logo-flotante img{ width:100%; height:100%; border-radius:50%; display:block; }
-.dmt-logo-flotante::before{
-  content:""; position:absolute; inset:0; border-radius:50%;
-  border:2px solid #c0c4cc; animation:dmt-pulso 2s ease-out infinite; pointer-events:none;
+@keyframes dmt-llegada{
+  0%   { transform:translateX(-160px); clip-path:inset(0 100% 0 0 round 22px); opacity:0; }
+  15%  { opacity:1; }
+  60%  { transform:translateX(10px);   clip-path:inset(0 0 0 0 round 22px); opacity:1; }
+  80%  { transform:translateX(-4px);   clip-path:inset(0 0 0 0 round 22px); }
+  100% { transform:translateX(0);      clip-path:inset(0 0 0 0 round 22px); opacity:1; }
 }
-@keyframes dmt-pulso{ 0%{transform:scale(1);opacity:.8} 100%{transform:scale(1.7);opacity:0} }
-@keyframes dmt-rebote{ 0%,80%,100%{transform:translateY(0)} 90%{transform:translateY(-8px)} }
-@media (prefers-reduced-motion:reduce){ .dmt-logo-flotante,.dmt-logo-flotante::before{animation:none} }
+
+/* 2) Aureola: dos aros redondeados que se expanden y se desvanecen,
+      empiezan cuando el logo ya llegó. */
+.dmt-aureola{ position:relative; display:inline-flex; border-radius:22px; }
+.dmt-aureola::before,
+.dmt-aureola::after{
+  content:""; position:absolute; inset:-3px; border-radius:25px;
+  border:2px solid rgba(71,73,78,.55);
+  opacity:0; pointer-events:none;
+  animation:dmt-aureola 2.6s ease-out infinite;
+  animation-delay:1.3s;
+}
+.dmt-aureola::after{ animation-delay:2.6s; }
+@keyframes dmt-aureola{
+  0%   { transform:scale(1);    opacity:.7; }
+  100% { transform:scale(1.22); opacity:0;  }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .dmt-entrada{ animation:none; }
+  .dmt-aureola::before,.dmt-aureola::after{ animation:none; }
+}

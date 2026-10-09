@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 const SECCIONES = [
@@ -13,7 +13,20 @@ const SECCIONES = [
 export default function Header() {
   const [busqueda, setBusqueda] = useState('')
   const [menuAbierto, setMenuAbierto] = useState(false)
+  const [achicado, setAchicado] = useState(false)
   const router = useRouter()
+
+  // Achica el header al bajar y lo agranda al volver arriba.
+  // Usa dos umbrales (60 y 20) para que no parpadee en el límite.
+  useEffect(() => {
+    function onScroll() {
+      const y = window.scrollY
+      setAchicado((prev) => (prev ? y > 20 : y > 60))
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   function handleBuscar(e) {
     e.preventDefault()
@@ -26,9 +39,14 @@ export default function Header() {
   return (
     <header
       style={{
-        padding: '14px 40px',
+        position: 'sticky',
+        top: 0,
+        zIndex: 1000,
+        padding: achicado ? '6px 40px' : '14px 40px',
         borderBottom: '1px solid #eee',
         backgroundColor: '#fff',
+        boxShadow: achicado ? '0 2px 10px rgba(0,0,0,0.08)' : 'none',
+        transition: 'padding .3s ease, box-shadow .3s ease',
       }}
     >
       <div
@@ -49,11 +67,22 @@ export default function Header() {
             textDecoration: 'none',
           }}
         >
-          <img
-            src="/logo.png"
-            alt="dimedetiambos"
-            style={{ height: '72px', width: 'auto', objectFit: 'contain' }}
-          />
+          {/* Aureola que pulsa alrededor del logo */}
+          <span className="dmt-aureola">
+            {/* Entrada: desliza desde la izquierda con borde redondeado y rebote */}
+            <span className="dmt-entrada">
+              <img
+                src="/logo.png"
+                alt="dimedetiambos"
+                className="dmt-logo-img"
+                style={{
+                  height: achicado ? '52px' : '88px',
+                  width: 'auto',
+                  objectFit: 'contain',
+                }}
+              />
+            </span>
+          </span>
           <span
             style={{
               fontSize: '20px',
