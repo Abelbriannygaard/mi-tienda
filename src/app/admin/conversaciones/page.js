@@ -23,6 +23,50 @@ function formatearFecha(fecha) {
   })
 }
 
+// Máximo de duración de una nota de voz grabada desde el panel (en segundos)
+const LIMITE_GRABACION = 300
+
+function formatearDuracion(segundos) {
+  const m = Math.floor(segundos / 60)
+  const s = String(segundos % 60).padStart(2, '0')
+  return `${m}:${s}`
+}
+
+// El navegador graba en un formato que WhatsApp no acepta (webm). Lo convertimos a MP3, que sí acepta.
+async function convertirAMp3(blob) {
+  const { Mp3Encoder } = await import('@breezystack/lamejs')
+
+  const datos = await blob.arrayBuffer()
+  const ContextoAudio = window.AudioContext || window.webkitAudioContext
+  const contexto = new ContextoAudio()
+  let audio
+  try {
+    audio = await contexto.decodeAudioData(datos)
+  } finally {
+    contexto.close()
+  }
+
+  // Mono alcanza para voz
+  const canal = audio.getChannelData(0)
+  const muestras = new Int16Array(canal.length)
+  for (let i = 0; i < canal.length; i++) {
+    const v = Math.max(-1, Math.min(1, canal[i]))
+    muestras[i] = v < 0 ? v * 0x8000 : v * 0x7fff
+  }
+
+  const codificador = new Mp3Encoder(1, audio.sampleRate, 96)
+  const partes = []
+  const TAMANO_BLOQUE = 1152
+  for (let i = 0; i < muestras.length; i += TAMANO_BLOQUE) {
+    const trozo = codificador.encodeBuffer(muestras.subarray(i, i + TAMANO_BLOQUE))
+    if (trozo.length > 0) partes.push(trozo)
+  }
+  const final = codificador.flush()
+  if (final.length > 0) partes.push(final)
+
+  return new Blob(partes, { type: 'audio/mpeg' })
+}
+
 function formatearTamano(bytes) {
   if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
@@ -133,6 +177,16 @@ export default function Conversaciones() {
   const finRef = useRef(null)
   const saltarScrollRef = useRef(false)
   const inputArchivoRef = useRef(null)
+
+  // Grabación de notas de voz
+  const [grabando, setGrabando] = useState(false)
+  const [segundos, setSegundos] = useState(0)
+  const [preparandoAudio, setPreparandoAudio] = useState(false)
+  const [urlPreview, setUrlPreview] = useState(null)
+  const grabadorRef = useRef(null)
+  const trozosRef = useRef([])
+  const microfonoRef = useRef(null)
+  const temporizadorRef = useRef(null)
 
   const [notisActivas, setNotisActivas] = useState(false)
   const [activandoNotis, setActivandoNotis] = useState(false)
@@ -265,6 +319,98 @@ export default function Conversaciones() {
     }
     finRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chat.mensajes.length, abierto])
+
+  // Vista previa para escuchar el audio adjunto antes de enviarlo
+  useEffect(() => {
+    if (archivo && archivo.type.startsWith('audio/')) {
+      const url = URL.createObjectURL(archivo)
+      setUrlPreview(url)
+      return () => URL.revokeObjectURL(url)
+    }
+    setUrlPreview(null)
+  }, [archivo])
+
+  function liberarMicrofono() {
+    clearInterval(temporizadorRef.current)
+    microfonoRef.current?.getTracks().forEach((pista) => pista.stop())
+    microfonoRef.current = null
+  }
+
+  // Si se cierra la página mientras se graba, se apaga el micrófono
+  useEffect(() => {
+    return () => liberarMicrofono()
+  }, [])
+
+  async function iniciarGrabacion() {
+    setError('')
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('Este navegador no permite grabar audio.')
+      return
+    }
+    try {
+      const microfono = await navigator.mediaDevices.getUserMedia({ audio: true })
+      microfonoRef.current = microfono
+      trozosRef.current = []
+
+      const grabador = new MediaRecorder(microfono)
+      grabador.ondataavailable = (e) => {
+        if (e.data.size > 0) trozosRef.current.push(e.data)
+      }
+      grabador.start()
+      grabadorRef.current = grabador
+
+      setSegundos(0)
+      setGrabando(true)
+      temporizadorRef.current = setInterval(() => setSegundos((s) => s + 1), 1000)
+    } catch (e) {
+      liberarMicrofono()
+      setError('No se pudo usar el micrófono. Revisá que el navegador tenga permiso para usarlo.')
+    }
+  }
+
+  function cancelarGrabacion() {
+    const grabador = grabadorRef.current
+    if (grabador) {
+      grabador.onstop = null
+      if (grabador.state !== 'inactive') grabador.stop()
+    }
+    grabadorRef.current = null
+    liberarMicrofono()
+    setGrabando(false)
+    setSegundos(0)
+  }
+
+  function terminarGrabacion() {
+    const grabador = grabadorRef.current
+    if (!grabador || grabador.state === 'inactive') return
+
+    clearInterval(temporizadorRef.current)
+    setGrabando(false)
+    setPreparandoAudio(true)
+
+    grabador.onstop = async () => {
+      try {
+        const original = new Blob(trozosRef.current, { type: grabador.mimeType || 'audio/webm' })
+        const mp3 = await convertirAMp3(original)
+        const hora = new Date()
+          .toLocaleTimeString('es-AR', { timeZone: ZONA, hour: '2-digit', minute: '2-digit' })
+          .replace(':', '')
+        setArchivo(new File([mp3], `nota-de-voz-${hora}.mp3`, { type: 'audio/mpeg' }))
+      } catch (e) {
+        setError('No se pudo preparar el audio: ' + e.message)
+      } finally {
+        liberarMicrofono()
+        grabadorRef.current = null
+        setPreparandoAudio(false)
+      }
+    }
+    grabador.stop()
+  }
+
+  // Corta sola la grabación al llegar al máximo
+  useEffect(() => {
+    if (grabando && segundos >= LIMITE_GRABACION) terminarGrabacion()
+  }, [segundos, grabando])
 
   function elegirArchivo(e) {
     const f = e.target.files?.[0]
@@ -403,7 +549,7 @@ export default function Conversaciones() {
     return (
       <main style={contenedor}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e5e5', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button onClick={() => setAbierto(null)} style={{ border: 'none', background: 'none', fontSize: '22px', cursor: 'pointer' }}>←</button>
+          <button onClick={() => { cancelarGrabacion(); setAbierto(null) }} style={{ border: 'none', background: 'none', fontSize: '22px', cursor: 'pointer' }}>←</button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontWeight: 'bold', fontSize: '16px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titulo}</p>
             <p style={{ margin: 0, fontSize: '12px', color: chat.bot_pausado ? '#b91c1c' : '#15803d' }}>
@@ -496,7 +642,51 @@ export default function Conversaciones() {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+          {archivo && urlPreview && (
+            <audio controls src={urlPreview} style={{ width: '100%', marginBottom: '8px' }} />
+          )}
+
+          {preparandoAudio && (
+            <p style={{ margin: '0 0 8px', fontSize: '13px', color: '#555' }}>Preparando audio...</p>
+          )}
+
+          {grabando && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 4px' }}>
+              <span style={{ flex: 1, fontSize: '15px', color: '#dc2626', fontWeight: '600' }}>
+                ● Grabando {formatearDuracion(segundos)}
+              </span>
+              <button
+                onClick={cancelarGrabacion}
+                style={{
+                  padding: '10px 14px',
+                  fontSize: '14px',
+                  borderRadius: '8px',
+                  border: '1px solid #ccc',
+                  backgroundColor: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={terminarGrabacion}
+                style={{
+                  padding: '10px 16px',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  borderRadius: '8px',
+                  border: 'none',
+                  color: '#fff',
+                  backgroundColor: '#15803d',
+                  cursor: 'pointer',
+                }}
+              >
+                Listo
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: grabando ? 'none' : 'flex', gap: '8px', alignItems: 'flex-end' }}>
             <input
               ref={inputArchivoRef}
               type="file"
@@ -518,6 +708,21 @@ export default function Conversaciones() {
               }}
             >
               📎
+            </button>
+            <button
+              onClick={iniciarGrabacion}
+              disabled={enviando || preparandoAudio || Boolean(archivo)}
+              title="Grabar nota de voz"
+              style={{
+                padding: '10px 12px',
+                fontSize: '20px',
+                borderRadius: '8px',
+                border: '1px solid #ccc',
+                backgroundColor: '#fff',
+                cursor: enviando || preparandoAudio || archivo ? 'not-allowed' : 'pointer',
+              }}
+            >
+              🎤
             </button>
             <textarea
               value={texto}
