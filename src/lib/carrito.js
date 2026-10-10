@@ -11,6 +11,21 @@ export function CarritoProvider({ children }) {
   const [zonaEnvio, setZonaEnvio] = useState(null)
   const [cargado, setCargado] = useState(false)
 
+  // Estado compartido del panel del carrito (abierto / cerrado)
+  const [panelAbierto, setPanelAbierto] = useState(false)
+
+  function abrirPanel() {
+    setPanelAbierto(true)
+  }
+
+  function cerrarPanel() {
+    setPanelAbierto(false)
+  }
+
+  function alternarPanel() {
+    setPanelAbierto((abierto) => !abierto)
+  }
+
   // Al montar en el navegador, recuperar lo guardado
   useEffect(() => {
     try {
@@ -127,6 +142,10 @@ export function CarritoProvider({ children }) {
         pagar,
         zonaEnvio,
         setZonaEnvio,
+        panelAbierto,
+        abrirPanel,
+        cerrarPanel,
+        alternarPanel,
       }}
     >
       {children}

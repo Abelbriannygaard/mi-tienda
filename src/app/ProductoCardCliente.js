@@ -2,32 +2,62 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { createPortal } from 'react-dom'
 import { useCarrito } from '@/lib/carrito'
+
+// Fotos de TABLA DE TALLES que no deben aparecer nunca en la tarjeta del home.
+// Pegá acá el link de cada foto de tabla, entre comillas y separados por coma. Ejemplo:
+//   'https://http2.mlstatic.com/D_Q_NP_000000-MLA000000000_000000-F.webp',
+const FOTOS_TABLA_TALLES = [
+]
+
+const CAMPOS_FOTO = [
+  'imagen_url', 'imagen_2', 'imagen_3', 'imagen_4', 'imagen_5', 'imagen_6',
+  'imagen_7', 'imagen_8', 'imagen_9', 'imagen_10', 'imagen_11', 'imagen_12',
+]
+
+// Fotos de una variante, sin las de tabla de talles
+function fotosValidas(variante) {
+  return CAMPOS_FOTO.map((campo) => variante[campo]).filter(
+    (url) => url && !FOTOS_TABLA_TALLES.includes(url)
+  )
+}
 
 export default function ProductoCardCliente({ producto, variantes }) {
   const coloresUnicos = Array.from(new Set(variantes.map((v) => v.color).filter(Boolean)))
 
+  // Una foto por color: la primera que no sea tabla de talles
   const primeraFotoPorColor = coloresUnicos
-    .map((color) => variantes.find((v) => v.color === color && v.imagen_url))
+    .map((color) => {
+      for (const v of variantes.filter((x) => x.color === color)) {
+        const url = fotosValidas(v)[0]
+        if (url) return { ...v, imagen_url: url }
+      }
+      return null
+    })
     .filter(Boolean)
 
   const fotoNegro = primeraFotoPorColor.find((f) => f.color?.toLowerCase() === 'negro')
   const fotoBlanco = primeraFotoPorColor.find((f) => f.color?.toLowerCase() === 'blanco')
   const fotoPorDefecto = fotoNegro || fotoBlanco || primeraFotoPorColor[0]
 
+  // Miniaturas: Negro siempre primero (si el producto lo tiene); el resto mantiene su orden
+  const esNegro = (f) => (f.color?.toLowerCase() === 'negro' ? 1 : 0)
+  const fotosOrdenadas = [...primeraFotoPorColor].sort((a, b) => esNegro(b) - esNegro(a))
+
   const [fotoActiva, setFotoActiva] = useState(fotoPorDefecto)
   const [modalAbierto, setModalAbierto] = useState(false)
   const [colorSeleccionado, setColorSeleccionado] = useState(fotoActiva?.color || '')
   const [varianteElegida, setVarianteElegida] = useState(fotoPorDefecto || variantes[0] || null)
   const [cantidad, setCantidad] = useState(1)
-  const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false)
 
-  const { agregarAlCarrito } = useCarrito()
+  const { agregarAlCarrito, abrirPanel, cerrarPanel } = useCarrito()
 
   const variantesDelColor = variantes.filter((v) => v.color === colorSeleccionado)
 
   function abrirModal(e) {
     e.preventDefault()
+    cerrarPanel()
     setColorSeleccionado(fotoActiva?.color || variantes[0]?.color || '')
     setVarianteElegida(fotoActiva || variantes[0] || null)
     setCantidad(1)
@@ -56,11 +86,8 @@ export default function ProductoCardCliente({ producto, variantes }) {
       },
       cantidad
     )
-    setMostrarConfirmacion(true)
-    setTimeout(() => {
-      setMostrarConfirmacion(false)
-      setModalAbierto(false)
-    }, 1200)
+    setModalAbierto(false)
+    abrirPanel()
   }
 
   return (
@@ -79,7 +106,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
 
       {primeraFotoPorColor.length > 1 && (
         <div className="flex gap-1.5 px-3 pt-3 flex-wrap">
-          {primeraFotoPorColor.slice(0, 4).map((f) => (
+          {fotosOrdenadas.slice(0, 5).map((f) => (
             <button
               key={f.color}
               onClick={(e) => {
@@ -117,10 +144,11 @@ export default function ProductoCardCliente({ producto, variantes }) {
         </button>
       </div>
 
-      {modalAbierto && (
+      {modalAbierto && createPortal(
         <div
           onClick={() => setModalAbierto(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#2E2A26]/50 p-4"
+          style={{ zIndex: 2000 }}
+          className="fixed inset-0 flex items-center justify-center bg-[#2E2A26]/50 p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -210,14 +238,9 @@ export default function ProductoCardCliente({ producto, variantes }) {
             >
               {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
             </button>
-
-            {mostrarConfirmacion && (
-              <div className="mt-3 rounded-lg bg-[#E3EFE9] px-3 py-2 text-center text-sm font-medium text-[#2F6B63]">
-                ✓ Producto agregado al carrito
-              </div>
-            )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
