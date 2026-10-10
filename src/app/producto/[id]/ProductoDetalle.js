@@ -31,13 +31,10 @@ export default function ProductoDetalle({ producto, variantes }) {
   // 6. Estado para el visor de imagen ampliada (Modal/Lightbox)
   const [modalAbierto, setModalAbierto] = useState(false)
 
-  const { agregarAlCarrito } = useCarrito()
+  const { agregarAlCarrito, abrirPanel } = useCarrito()
 
   // Estado para la cantidad elegida
   const [cantidad, setCantidad] = useState(1)
-
-  // Estado para mostrar el mensaje de "agregado con éxito"
-  const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false)
 
   // Extraer todas las imágenes no vacías de la variante elegida
   const imagenesGaleria = varianteElegida
@@ -91,7 +88,7 @@ export default function ProductoDetalle({ producto, variantes }) {
     }
   }
 
-    function handleAgregar() {
+  function handleAgregar() {
     agregarAlCarrito(
       {
         ...producto,
@@ -103,8 +100,8 @@ export default function ProductoDetalle({ producto, variantes }) {
       cantidad
     )
 
-    setMostrarConfirmacion(true)
-    setTimeout(() => setMostrarConfirmacion(false), 2500)
+    // Abre el panel del carrito para que se vea lo recién agregado
+    abrirPanel()
   }
 
   return (
@@ -270,13 +267,6 @@ export default function ProductoDetalle({ producto, variantes }) {
             >
               {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
             </button>
-
-            {/* Mensaje de confirmación */}
-            {mostrarConfirmacion && (
-              <div className="mt-3 rounded-lg bg-[#E3EFE9] px-3 py-2.5 text-center text-sm font-medium text-[#2F6B63]">
-                ✓ Producto agregado al carrito
-              </div>
-            )}
           </div>
         </div>
 
@@ -295,7 +285,8 @@ export default function ProductoDetalle({ producto, variantes }) {
       {modalAbierto && imagenesGaleria.length > 0 && (
         <div
           onClick={() => setModalAbierto(false)}
-          className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-[#2E2A26]/85 p-5"
+          style={{ zIndex: 2000 }}
+          className="fixed inset-0 flex cursor-zoom-out items-center justify-center bg-[#2E2A26]/85 p-5"
         >
           <button
             onClick={() => setModalAbierto(false)}
