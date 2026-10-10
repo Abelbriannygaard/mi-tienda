@@ -2,8 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
 const ZONA = 'America/Argentina/Buenos_Aires'
+
+// Tamaño máximo que permite WhatsApp según el tipo de archivo (en MB)
+const LIMITE_MB = { image: 5, video: 16, audio: 16, document: 50 }
+
+const TIPOS_ACEPTADOS =
+  'image/jpeg,image/png,video/mp4,video/3gpp,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt'
 
 function formatearFecha(fecha) {
   if (!fecha) return ''
@@ -14,6 +21,11 @@ function formatearFecha(fecha) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatearTamano(bytes) {
+  if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 function traducirError(mensaje) {
@@ -35,6 +47,79 @@ const estilosRol = {
   admin: { fondo: '#dcfce7', alinear: 'flex-end', etiqueta: 'Vos' },
 }
 
+// Muestra el contenido de un mensaje: texto, foto, video, audio o documento
+function ContenidoMensaje({ m }) {
+  const tipo = m.tipo || 'text'
+  if (tipo === 'text') return <>{m.mensaje}</>
+
+  const lineas = (m.mensaje || '').split('\n')
+  const etiqueta = lineas[0]
+  const textoAcompanante = lineas.slice(1).join('\n')
+
+  if (!m.media_url) {
+    return <span style={{ color: '#888' }}>{etiqueta} (no se pudo cargar el archivo)</span>
+  }
+
+  let archivo = null
+
+  if (tipo === 'image') {
+    archivo = (
+      <a href={m.media_url} target="_blank" rel="noreferrer">
+        <img
+          src={m.media_url}
+          alt="Foto"
+          style={{ display: 'block', width: '260px', maxWidth: '100%', borderRadius: '8px' }}
+        />
+      </a>
+    )
+  } else if (tipo === 'sticker') {
+    archivo = (
+      <img src={m.media_url} alt="Sticker" style={{ display: 'block', width: '120px', maxWidth: '100%' }} />
+    )
+  } else if (tipo === 'video') {
+    archivo = (
+      <video
+        controls
+        preload="metadata"
+        src={m.media_url}
+        style={{ display: 'block', width: '260px', maxWidth: '100%', borderRadius: '8px' }}
+      />
+    )
+  } else if (tipo === 'audio') {
+    archivo = (
+      <div>
+        <audio controls preload="none" src={m.media_url} style={{ width: '240px', maxWidth: '100%' }} />
+        <a
+          href={m.media_url}
+          target="_blank"
+          rel="noreferrer"
+          style={{ display: 'block', fontSize: '12px', color: '#555', marginTop: '2px' }}
+        >
+          Descargar audio
+        </a>
+      </div>
+    )
+  } else {
+    archivo = (
+      <a
+        href={m.media_url}
+        target="_blank"
+        rel="noreferrer"
+        style={{ color: '#1d4ed8', textDecoration: 'underline', wordBreak: 'break-word' }}
+      >
+        📎 {m.media_nombre || 'Documento'}
+      </a>
+    )
+  }
+
+  return (
+    <>
+      {archivo}
+      {textoAcompanante && <div style={{ marginTop: '6px' }}>{textoAcompanante}</div>}
+    </>
+  )
+}
+
 export default function Conversaciones() {
   const [lista, setLista] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -42,10 +127,12 @@ export default function Conversaciones() {
   const [chat, setChat] = useState({ mensajes: [], bot_pausado: false, nombre_cliente: null, hayMas: false })
   const [cargandoViejos, setCargandoViejos] = useState(false)
   const [texto, setTexto] = useState('')
+  const [archivo, setArchivo] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
   const finRef = useRef(null)
   const saltarScrollRef = useRef(false)
+  const inputArchivoRef = useRef(null)
 
   const [notisActivas, setNotisActivas] = useState(false)
   const [activandoNotis, setActivandoNotis] = useState(false)
@@ -179,23 +266,106 @@ export default function Conversaciones() {
     finRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chat.mensajes.length, abierto])
 
+  function elegirArchivo(e) {
+    const f = e.target.files?.[0]
+    if (f) {
+      setArchivo(f)
+      setError('')
+    }
+  }
+
+  function quitarArchivo() {
+    setArchivo(null)
+    if (inputArchivoRef.current) inputArchivoRef.current.value = ''
+  }
+
+  async function enviarTexto(t) {
+    const res = await fetch('/api/admin/conversaciones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'enviar', numero: abierto, texto: t }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      setError(traducirError(data.error))
+      return false
+    }
+    return true
+  }
+
   async function enviar() {
     const t = texto.trim()
-    if (!t || enviando) return
+    if ((!t && !archivo) || enviando) return
     setEnviando(true)
     setError('')
     try {
-      const res = await fetch('/api/admin/conversaciones', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accion: 'enviar', numero: abierto, texto: t }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setError(traducirError(data.error))
-      } else {
+      if (archivo) {
+        // 1) Pedir permiso de subida
+        const resFirma = await fetch('/api/admin/conversaciones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accion: 'firmar_subida',
+            numero: abierto,
+            nombre: archivo.name,
+            mime: archivo.type,
+          }),
+        })
+        const firma = await resFirma.json()
+        if (!resFirma.ok) {
+          setError(firma.error || 'No se pudo preparar el archivo')
+          return
+        }
+
+        const limite = LIMITE_MB[firma.categoria]
+        if (archivo.size > limite * 1024 * 1024) {
+          setError(`El archivo pesa ${formatearTamano(archivo.size)}. WhatsApp permite hasta ${limite} MB para este tipo.`)
+          return
+        }
+
+        // 2) Subir el archivo directo a Supabase Storage
+        const { error: errorSubida } = await supabase.storage
+          .from('whatsapp-media')
+          .uploadToSignedUrl(firma.path, firma.token, archivo, { contentType: firma.mime })
+        if (errorSubida) {
+          setError('No se pudo subir el archivo: ' + errorSubida.message)
+          return
+        }
+
+        // 3) Pedirle a WhatsApp que lo mande
+        const res = await fetch('/api/admin/conversaciones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accion: 'enviar_media',
+            numero: abierto,
+            url: firma.url,
+            mime: firma.mime,
+            nombre: archivo.name,
+            caption: firma.categoria === 'audio' ? '' : t,
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          setError(traducirError(data.error))
+          return
+        }
+
+        // Los audios no llevan texto: si escribiste algo, va como mensaje aparte
+        if (firma.categoria === 'audio' && t) {
+          const ok = await enviarTexto(t)
+          if (!ok) return
+        }
+
+        quitarArchivo()
         setTexto('')
         await cargarChat(abierto)
+      } else {
+        const ok = await enviarTexto(t)
+        if (ok) {
+          setTexto('')
+          await cargarChat(abierto)
+        }
       }
     } catch (e) {
       setError('Error de conexión, intentá de nuevo')
@@ -228,6 +398,7 @@ export default function Conversaciones() {
   if (abierto) {
     const cliente = lista.find((c) => c.numero_cliente === abierto)
     const titulo = chat.nombre_cliente || cliente?.nombre_cliente || abierto
+    const puedeEnviar = !enviando && (texto.trim() || archivo)
 
     return (
       <main style={contenedor}>
@@ -282,7 +453,7 @@ export default function Conversaciones() {
             return (
               <div key={m.id} style={{ alignSelf: e.alinear, maxWidth: '85%' }}>
                 <div style={{ backgroundColor: e.fondo, padding: '10px 12px', borderRadius: '12px', fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {m.mensaje}
+                  <ContenidoMensaje m={m} />
                 </div>
                 <p style={{ margin: '2px 4px 0', fontSize: '11px', color: '#999', textAlign: e.alinear === 'flex-end' ? 'right' : 'left' }}>
                   {e.etiqueta} · {formatearFecha(m.created_at)}
@@ -297,37 +468,88 @@ export default function Conversaciones() {
           <p style={{ margin: 0, padding: '8px 16px', fontSize: '13px', color: '#b91c1c', backgroundColor: '#fee2e2' }}>{error}</p>
         )}
 
-        <div style={{ padding: '10px 12px', borderTop: '1px solid #e5e5e5', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-          <textarea
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            onKeyDown={(e) => {
-              const esCelu = window.matchMedia('(pointer: coarse)').matches
-              if (e.key === 'Enter' && !e.shiftKey && !esCelu && !e.nativeEvent.isComposing) {
-                e.preventDefault()
-                enviar()
-              }
-            }}
-            placeholder="Escribí tu mensaje..."
-            rows={2}
-            style={{ flex: 1, padding: '10px', fontSize: '15px', borderRadius: '8px', border: '1px solid #ccc', resize: 'none', fontFamily: 'inherit' }}
-          />
-          <button
-            onClick={enviar}
-            disabled={enviando || !texto.trim()}
-            style={{
-              padding: '12px 16px',
-              fontSize: '15px',
-              fontWeight: 'bold',
-              borderRadius: '8px',
-              border: 'none',
-              color: '#fff',
-              backgroundColor: enviando || !texto.trim() ? '#7fc9ec' : '#009ee3',
-              cursor: enviando ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {enviando ? '...' : 'Enviar'}
-          </button>
+        <div style={{ padding: '10px 12px', borderTop: '1px solid #e5e5e5' }}>
+          {archivo && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginBottom: '8px',
+                padding: '6px 10px',
+                fontSize: '13px',
+                borderRadius: '8px',
+                backgroundColor: '#f1f5f9',
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                📎 {archivo.name} ({formatearTamano(archivo.size)})
+              </span>
+              <button
+                onClick={quitarArchivo}
+                disabled={enviando}
+                title="Quitar archivo"
+                style={{ border: 'none', background: 'none', fontSize: '16px', cursor: 'pointer', color: '#555' }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+            <input
+              ref={inputArchivoRef}
+              type="file"
+              accept={TIPOS_ACEPTADOS}
+              onChange={elegirArchivo}
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => inputArchivoRef.current?.click()}
+              disabled={enviando}
+              title="Adjuntar foto, video, audio o documento"
+              style={{
+                padding: '10px 12px',
+                fontSize: '20px',
+                borderRadius: '8px',
+                border: '1px solid #ccc',
+                backgroundColor: '#fff',
+                cursor: enviando ? 'not-allowed' : 'pointer',
+              }}
+            >
+              📎
+            </button>
+            <textarea
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              onKeyDown={(e) => {
+                const esCelu = window.matchMedia('(pointer: coarse)').matches
+                if (e.key === 'Enter' && !e.shiftKey && !esCelu && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  enviar()
+                }
+              }}
+              placeholder={archivo ? 'Agregá un texto (opcional)...' : 'Escribí tu mensaje...'}
+              rows={2}
+              style={{ flex: 1, padding: '10px', fontSize: '15px', borderRadius: '8px', border: '1px solid #ccc', resize: 'none', fontFamily: 'inherit' }}
+            />
+            <button
+              onClick={enviar}
+              disabled={!puedeEnviar}
+              style={{
+                padding: '12px 16px',
+                fontSize: '15px',
+                fontWeight: 'bold',
+                borderRadius: '8px',
+                border: 'none',
+                color: '#fff',
+                backgroundColor: puedeEnviar ? '#009ee3' : '#7fc9ec',
+                cursor: puedeEnviar ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {enviando ? '...' : 'Enviar'}
+            </button>
+          </div>
         </div>
       </main>
     )
@@ -373,6 +595,7 @@ export default function Conversaciones() {
             setChat({ mensajes: [], bot_pausado: c.bot_pausado, nombre_cliente: c.nombre_cliente, hayMas: false })
             setError('')
             setTexto('')
+            setArchivo(null)
             setAbierto(c.numero_cliente)
           }}
           style={{ padding: '14px 16px', borderBottom: '1px solid #f0f0f0', cursor: 'pointer' }}
@@ -397,6 +620,7 @@ export default function Conversaciones() {
     </main>
   )
 }
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')

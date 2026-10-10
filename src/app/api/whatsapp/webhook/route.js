@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import webpush from "web-push";
 
+// Descargar archivos de WhatsApp puede tardar unos segundos
+export const maxDuration = 30;
+
 webpush.setVapidDetails(
   "mailto:dimedetiambos@gmail.com",
   process.env.VAPID_PUBLIC_KEY,
@@ -11,6 +14,20 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+const BUCKET_MEDIA = "whatsapp-media";
+
+// Tipos de archivo que recibimos y cómo se rotulan en el panel
+const ETIQUETAS_MEDIA = {
+  image: "📷 Foto",
+  video: "🎥 Video",
+  audio: "🎤 Audio",
+  document: "📎 Documento",
+  sticker: "🏷️ Sticker",
+};
+
+const AVISO_ARCHIVO_RECIBIDO =
+  "¡Gracias! 🙌 Recibí tu archivo. Una persona del local lo va a revisar y te responde a la brevedad.";
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -36,6 +53,20 @@ export async function POST(request) {
       return new Response("OK", { status: 200 });
     }
 
+    // Meta reenvía el aviso si tardamos en responder: si este mensaje ya lo guardamos, no lo repetimos
+    if (message.id) {
+      const { data: yaGuardado } = await supabase
+        .from("whatsapp_conversaciones")
+        .select("id")
+        .eq("wa_id", message.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (yaGuardado) {
+        return new Response("OK", { status: 200 });
+      }
+    }
+
     const from = message.from;
     const paraEnviar = from.startsWith("549") ? "54" + from.slice(3) : from;
     const texto = message.text?.body;
@@ -43,7 +74,7 @@ export async function POST(request) {
     if (texto) {
       const hiloId = await obtenerOCrearHilo(from);
       await asegurarCliente(from);
-      await guardarMensaje(from, hiloId, "user", texto);
+      await guardarMensaje(from, hiloId, "user", texto, { wa_id: message.id });
       await avisarNuevoMensaje(from, texto);
 
       const pausado = await estaBotPausado(from);
@@ -55,6 +86,8 @@ export async function POST(request) {
         await guardarMensaje(from, hiloId, "model", respuesta);
         await mandarMensajeWhatsApp(paraEnviar, respuesta);
       }
+    } else if (ETIQUETAS_MEDIA[message.type]) {
+      await procesarArchivoRecibido(message, from, paraEnviar);
     }
 
     return new Response("OK", { status: 200 });
@@ -62,6 +95,111 @@ export async function POST(request) {
     console.error("Error en webhook de WhatsApp:", error);
     return new Response("Error", { status: 500 });
   }
+}
+
+// Foto, video, audio, documento o sticker que manda el cliente
+async function procesarArchivoRecibido(message, from, paraEnviar) {
+  const tipo = message.type;
+  const datos = message[tipo] || {};
+  const caption = datos.caption || "";
+  const etiqueta = ETIQUETAS_MEDIA[tipo];
+  const mensaje = caption ? `${etiqueta}\n${caption}` : etiqueta;
+
+  const hiloId = await obtenerOCrearHilo(from);
+  await asegurarCliente(from);
+
+  let archivo = null;
+  try {
+    archivo = await descargarYGuardarArchivo(datos.id, from, datos.mime_type, datos.filename);
+  } catch (error) {
+    console.error("No se pudo descargar el archivo de WhatsApp:", error.message);
+  }
+
+  await guardarMensaje(from, hiloId, "user", mensaje, {
+    tipo,
+    media_url: archivo?.url || null,
+    media_mime: archivo?.mime || datos.mime_type || null,
+    media_nombre: datos.filename || null,
+    wa_id: message.id,
+  });
+
+  await avisarNuevoMensaje(from, mensaje);
+
+  // El bot no sabe interpretar archivos: avisa que una persona lo va a ver y se pausa
+  const pausado = await estaBotPausado(from);
+  if (!pausado) {
+    await guardarMensaje(from, hiloId, "model", AVISO_ARCHIVO_RECIBIDO);
+    await mandarMensajeWhatsApp(paraEnviar, AVISO_ARCHIVO_RECIBIDO);
+    await supabase
+      .from("whatsapp_clientes")
+      .update({ bot_pausado: true })
+      .eq("numero_cliente", from);
+  }
+}
+
+function extensionDeMime(mime, nombre) {
+  const base = (mime || "").split(";")[0].trim().toLowerCase();
+  const mapa = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "video/mp4": "mp4",
+    "video/3gpp": "3gp",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "audio/amr": "amr",
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/plain": "txt",
+  };
+  if (mapa[base]) return mapa[base];
+
+  if (nombre && nombre.includes(".")) {
+    const deNombre = nombre.split(".").pop();
+    if (/^[a-zA-Z0-9]{1,6}$/.test(deNombre)) return deNombre.toLowerCase();
+  }
+  return "bin";
+}
+
+// Baja el archivo de los servidores de Meta y lo guarda en Supabase Storage
+async function descargarYGuardarArchivo(mediaId, numeroCliente, mimeDeclarado, nombreOriginal) {
+  if (!mediaId) throw new Error("El mensaje no trae el id del archivo");
+
+  const cabeceras = { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` };
+
+  const resInfo = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+    headers: cabeceras,
+  });
+  const info = await resInfo.json();
+  if (!resInfo.ok || !info.url) {
+    throw new Error("Meta no devolvió el link del archivo: " + JSON.stringify(info));
+  }
+
+  const resArchivo = await fetch(info.url, { headers: cabeceras });
+  if (!resArchivo.ok) {
+    throw new Error("No se pudo bajar el archivo (código " + resArchivo.status + ")");
+  }
+  const contenido = Buffer.from(await resArchivo.arrayBuffer());
+
+  const mimeCompleto = info.mime_type || mimeDeclarado || resArchivo.headers.get("content-type") || "";
+  const mime = mimeCompleto.split(";")[0].trim().toLowerCase() || "application/octet-stream";
+  const extension = extensionDeMime(mime, nombreOriginal);
+  const ruta = `entrantes/${numeroCliente}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+
+  const { error } = await supabase.storage
+    .from(BUCKET_MEDIA)
+    .upload(ruta, contenido, { contentType: mime, upsert: false });
+  if (error) throw new Error("No se pudo guardar en Storage: " + error.message);
+
+  const { data } = supabase.storage.from(BUCKET_MEDIA).getPublicUrl(ruta);
+  return { url: data.publicUrl, mime };
 }
 
 async function obtenerOCrearHilo(numeroCliente) {
@@ -92,12 +230,13 @@ async function obtenerOCrearHilo(numeroCliente) {
   return nuevoHiloId;
 }
 
-async function guardarMensaje(numeroCliente, hiloId, rol, mensaje) {
+async function guardarMensaje(numeroCliente, hiloId, rol, mensaje, extra = {}) {
   await supabase.from("whatsapp_conversaciones").insert({
     numero_cliente: numeroCliente,
     hilo_id: hiloId,
     rol,
     mensaje,
+    ...extra,
   });
 }
 
