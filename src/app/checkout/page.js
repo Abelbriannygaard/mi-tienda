@@ -7,9 +7,10 @@ import { useCarrito } from '@/lib/carrito'
 import { useRouter } from 'next/navigation'
 import SelectorEnvio from './SelectorEnvio'
 import BrandBrickMP from './BrandBrickMP'
+import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 
 export default function Checkout() {
-  const { items, total, totalProductos, costoEnvio, zonaEnvio, pagar } = useCarrito()
+  const { items, total, totalProductos, costoEnvio, zonaEnvio, pagar, vaciarCarrito } = useCarrito()
   const router = useRouter()
 
   const [datos, setDatos] = useState({
@@ -26,8 +27,15 @@ export default function Checkout() {
   })
 
   const [enviando, setEnviando] = useState(false)
+  const [metodoPago, setMetodoPago] = useState('mercadopago')
 
   const esRetiro = zonaEnvio?.nombre === 'Retiro en persona'
+
+  // Descuento por transferencia: solo sobre los productos, no sobre el envío
+  const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
+  const montoDescuento = Math.round(totalProductos * DESCUENTO_TRANSFERENCIA)
+  const conTransferencia = metodoPago === 'transferencia'
+  const totalAPagar = conTransferencia ? total - montoDescuento : total
 
   function handleChange(e) {
     setDatos({ ...datos, [e.target.name]: e.target.value })
@@ -72,6 +80,30 @@ export default function Checkout() {
         })
       })
 
+      if (conTransferencia) {
+        const res = await fetch('/api/crear-pedido-transferencia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items, zonaEnvio, datosCliente: datos, recaptchaToken: token }),
+        })
+        const data = await res.json()
+
+        if (!res.ok) {
+          alert(data.error || 'Hubo un error al procesar tu pedido. Probá de nuevo.')
+          setEnviando(false)
+          return
+        }
+
+        // La pantalla siguiente lee estos datos para mostrar el monto y el número de pedido
+        sessionStorage.setItem(
+          'pedido_transferencia',
+          JSON.stringify({ id: data.pedido_id, total: data.total, descuento: data.descuento })
+        )
+        vaciarCarrito()
+        router.push('/pago-transferencia')
+        return
+      }
+
       await pagar(datos, token)
     } catch (err) {
       alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
@@ -102,7 +134,12 @@ export default function Checkout() {
           </p>
         ))}
         <p>Envío ({zonaEnvio?.nombre || 'sin elegir'}): ${costoEnvio}</p>
-        <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${total}</p>
+        {conTransferencia && (
+          <p style={{ color: '#15803d' }}>
+            Descuento por transferencia ({porcentajeDescuento}%): −${montoDescuento}
+          </p>
+        )}
+        <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${totalAPagar}</p>
       </div>
 
       <SelectorEnvio codigoPostal={datos.codigoPostal} />
@@ -162,7 +199,42 @@ export default function Checkout() {
           <textarea name="notas" value={datos.notas} onChange={handleChange} style={{ ...inputStyle, minHeight: '60px' }} />
         </label>
 
-        <BrandBrickMP />
+        <div style={{ marginTop: '8px' }}>
+          <p style={{ margin: '0 0 8px', fontWeight: 'bold' }}>Forma de pago</p>
+
+          <label style={opcionPagoStyle(metodoPago === 'mercadopago')}>
+            <input
+              type="radio"
+              name="metodoPago"
+              checked={metodoPago === 'mercadopago'}
+              onChange={() => setMetodoPago('mercadopago')}
+            />
+            <span>
+              <strong>Mercado Pago</strong>
+              <br />
+              <small style={{ color: '#666' }}>Tarjeta, dinero en cuenta, cuotas y más</small>
+            </span>
+          </label>
+
+          <label style={{ ...opcionPagoStyle(conTransferencia), marginTop: '8px' }}>
+            <input
+              type="radio"
+              name="metodoPago"
+              checked={conTransferencia}
+              onChange={() => setMetodoPago('transferencia')}
+            />
+            <span>
+              <strong>Transferencia bancaria</strong>{' '}
+              <span style={{ color: '#15803d', fontWeight: 'bold' }}>{porcentajeDescuento}% de descuento</span>
+              <br />
+              <small style={{ color: '#666' }}>
+                Ahorrás ${montoDescuento}. Te mostramos los datos al terminar el pedido.
+              </small>
+            </span>
+          </label>
+        </div>
+
+        {!conTransferencia && <BrandBrickMP />}
 
         <button
           type="submit"
@@ -171,14 +243,14 @@ export default function Checkout() {
             marginTop: '10px',
             padding: '14px',
             fontSize: '16px',
-            backgroundColor: enviando ? '#ccc' : '#009ee3',
+            backgroundColor: enviando ? '#ccc' : conTransferencia ? '#2F6B63' : '#009ee3',
             color: 'white',
             border: 'none',
             borderRadius: '8px',
             cursor: enviando ? 'not-allowed' : 'pointer',
           }}
         >
-          {enviando ? 'Procesando...' : 'Confirmar y pagar'}
+          {enviando ? 'Procesando...' : conTransferencia ? 'Confirmar pedido' : 'Confirmar y pagar'}
         </button>
       </form>
     </main>
@@ -193,4 +265,17 @@ const inputStyle = {
   border: '1px solid #ccc',
   borderRadius: '6px',
   boxSizing: 'border-box',
+}
+
+function opcionPagoStyle(seleccionada) {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '12px',
+    border: seleccionada ? '2px solid #2F6B63' : '1px solid #ccc',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    backgroundColor: seleccionada ? '#f0f7f5' : '#fff',
+  }
 }

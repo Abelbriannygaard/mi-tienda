@@ -45,7 +45,15 @@ export async function generarFacturaPdf({ pedido, resultado, puntoVenta, tipoCom
   y -= 20
   for (const item of pedido.items || []) {
     if (item.nombre?.toLowerCase().startsWith('envío')) continue
-    dibujarTexto(`${item.cantidad} x ${item.nombre} — $${item.precio}`, 50)
+
+    // Una línea con precio negativo es un descuento (ej: pago por transferencia)
+    const importe = item.precio * item.cantidad
+    const linea =
+      importe < 0
+        ? `${item.nombre} — -$${Math.abs(importe)}`
+        : `${item.cantidad} x ${item.nombre} — $${item.precio}`
+
+    dibujarTexto(linea, 50)
     y -= 18
   }
   y -= 20

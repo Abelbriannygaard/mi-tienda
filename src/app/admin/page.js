@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import CerrarSesionBoton from './CerrarSesionBoton'
 import BotonGenerarEtiqueta from './BotonGenerarEtiqueta'
 import BotonAnularFactura from './BotonAnularFactura'
+import BotonConfirmarTransferencia from './BotonConfirmarTransferencia'
 import EditarDireccionBoton from './EditarDireccionBoton'
 import Link from 'next/link'
 export const dynamic = 'force-dynamic'
@@ -57,17 +58,22 @@ export default async function PanelAdmin() {
       {!error && pedidos && pedidos.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {pedidos.map((pedido) => {
-            const estado = coloresEstado[pedido.estado] || {
-              fondo: '#f3f4f6',
-              texto: '#6b7280',
-              label: pedido.estado,
-            }
+            const esTransferencia = pedido.metodo_pago === 'transferencia'
+            const esperandoTransferencia = esTransferencia && pedido.estado === 'pending'
+
+            const estado = esperandoTransferencia
+              ? { fondo: '#fef9c3', texto: '#a16207', label: 'Esperando transferencia' }
+              : coloresEstado[pedido.estado] || {
+                  fondo: '#f3f4f6',
+                  texto: '#6b7280',
+                  label: pedido.estado,
+                }
 
             return (
               <div
                 key={pedido.id}
                 style={{
-                  border: '1px solid #e5e5e5',
+                  border: esperandoTransferencia ? '2px solid #fde68a' : '1px solid #e5e5e5',
                   borderRadius: '10px',
                   padding: '20px',
                   backgroundColor: '#fff',
@@ -97,6 +103,11 @@ export default async function PanelAdmin() {
                     >
                       {estado.label}
                     </span>
+                    {esTransferencia && (
+                      <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '13px', color: '#2F6B63', fontWeight: '600' }}>
+                        🏦 Transferencia
+                      </span>
+                    )}
                     <p style={{ margin: '6px 0 0', fontWeight: 'bold', fontSize: '18px' }}>
                       ${pedido.total}
                     </p>
@@ -129,7 +140,9 @@ export default async function PanelAdmin() {
                         </div>
                       )}
                       <p style={{ margin: 0, fontSize: '14px', color: '#333' }}>
-                        {item.cantidad} x {item.nombre} — ${item.precio}
+                        {item.precio < 0
+                          ? `${item.nombre} — −$${Math.abs(item.precio * item.cantidad)}`
+                          : `${item.cantidad} x ${item.nombre} — $${item.precio}`}
                       </p>
                     </div>
                   ))}
@@ -150,9 +163,10 @@ export default async function PanelAdmin() {
                 )}
 
                 <p style={{ marginTop: '10px', fontSize: '12px', color: '#aaa' }}>
-                  Pedido #{pedido.id} · Pago #{pedido.mercadopago_payment_id} · {new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
+                  Pedido #{pedido.id} · {esTransferencia ? 'Ref' : 'Pago'} #{pedido.mercadopago_payment_id} · {new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
                 </p>
-                <BotonGenerarEtiqueta pedido={pedido} />
+                <BotonConfirmarTransferencia pedido={pedido} />
+                {!esperandoTransferencia && <BotonGenerarEtiqueta pedido={pedido} />}
                 <BotonAnularFactura pedido={pedido} />
                 <EditarDireccionBoton pedido={pedido} />
               </div>
