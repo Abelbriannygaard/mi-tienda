@@ -127,7 +127,7 @@ export async function enviarEmailNotificacionVenta(pedido) {
           ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
 
           <p style="margin-top: 20px; font-size: 13px; color: #8A8378;">
-            Pago #${pedido.mercadopago_payment_id}
+            ${pedido.metodo_pago === 'transferencia' ? `Pedido #${pedido.id} · pagado por transferencia` : `Pago #${pedido.mercadopago_payment_id}`}
           </p>
         </div>
       `,

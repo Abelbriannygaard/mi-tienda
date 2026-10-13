@@ -3,7 +3,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { generarFactura } from './generarFactura'
-import { enviarEmailConfirmacionCliente } from './enviarEmails'
+import { enviarEmailConfirmacionCliente, enviarEmailNotificacionVenta } from './enviarEmails'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -36,7 +36,7 @@ async function facturarPedido(pedido) {
   }
 }
 
-// Marca el pedido como pagado, factura por el total con descuento y avisa al cliente.
+// Marca el pedido como pagado, factura por el total con descuento y avisa al cliente y al vendedor.
 export async function confirmarPagoTransferencia(pedidoId) {
   const { data: pedido, error } = await supabaseAdmin
     .from('pedidos')
@@ -73,11 +73,17 @@ export async function confirmarPagoTransferencia(pedidoId) {
 
   const factura = await facturarPedido(pedido)
 
-  await enviarEmailConfirmacionCliente({
+  const pedidoPagado = {
     ...pedido,
     estado: 'approved',
     factura_pdf_url: factura?.pdfUrl || null,
-  })
+  }
+
+  // Al cliente: confirmación de pago
+  await enviarEmailConfirmacionCliente(pedidoPagado)
+
+  // Al vendedor: aviso de venta confirmada (igual que con Mercado Pago)
+  await enviarEmailNotificacionVenta(pedidoPagado)
 
   return { ok: true, yaConfirmado: false, facturaOk: Boolean(factura) }
 }
