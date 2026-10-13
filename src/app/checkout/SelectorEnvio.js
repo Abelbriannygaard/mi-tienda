@@ -3,6 +3,16 @@
 import { useEffect, useState } from 'react'
 import { useCarrito } from '@/lib/carrito'
 
+// Opción de entrega sin envío. El checkout reconoce este nombre y no pide la dirección.
+const RETIRO_EN_PERSONA = {
+  id: 'retiro-en-persona',
+  nombre: 'Retiro en persona',
+  costo: 0,
+  envioCarrier: null,
+  envioServiceCode: null,
+  envioBranchCode: null,
+}
+
 export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
   const [cpInput, setCpInput] = useState('')
   const [opcionesEnvia, setOpcionesEnvia] = useState([])
@@ -10,6 +20,8 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
   const [errorCotizacion, setErrorCotizacion] = useState(null)
   
   const { items, zonaEnvio, setZonaEnvio } = useCarrito()
+
+  const retiroSeleccionado = zonaEnvio?.id === RETIRO_EN_PERSONA.id
 
   // Sincronizar si el usuario cambia el CP en el formulario principal
   useEffect(() => {
@@ -66,8 +78,38 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
 
   return (
     <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', marginTop: '15px', backgroundColor: '#fafafa' }}>
+      {/* Retiro en persona: no necesita Código Postal ni cotización */}
       <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
-        Calcular costo de envío:
+        ¿Cómo querés recibir tu pedido?
+      </p>
+
+      <label
+        style={{
+          display: 'block',
+          padding: '12px',
+          border: retiroSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+          borderRadius: '6px',
+          marginBottom: '16px',
+          cursor: 'pointer',
+          backgroundColor: retiroSeleccionado ? '#f0f8ff' : '#fff',
+        }}
+      >
+        <input
+          type="radio"
+          name="zonaEnvio"
+          checked={retiroSeleccionado}
+          onChange={() => setZonaEnvio({ ...RETIRO_EN_PERSONA })}
+          style={{ marginRight: '10px' }}
+        />
+        <strong>Retiro en persona</strong> — Gratis
+        <br />
+        <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
+          Te avisamos cuando esté listo y coordinamos el retiro.
+        </small>
+      </label>
+
+      <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
+        O calcular el costo de envío a domicilio:
       </p>
 
       {/* Casilla para que el usuario escriba o modifique su Código Postal */}

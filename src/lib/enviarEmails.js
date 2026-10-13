@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { DATOS_BANCARIOS, WHATSAPP_NEGOCIO } from './configTransferencia'
+import { textoConfeccion } from './configConfeccion'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -38,6 +39,14 @@ function formatearItems(items) {
     .join('')
 }
 
+// Bloque de entrega para los emails al cliente: tiempo de confección y, si corresponde, aviso de retiro
+function bloqueEntrega(pedido) {
+  const esRetiro = pedido.zona_envio === 'Retiro en persona'
+  return `
+          <p style="color: #2E2A26;"><strong>Tiempo de confección estimado:</strong> ${textoConfeccion()}.</p>
+          ${esRetiro ? '<p style="color: #2E2A26;"><strong>Retiro en persona:</strong> te avisamos por WhatsApp o por email cuando tu pedido esté listo, y coordinamos el día y el horario para retirarlo.</p>' : ''}`
+}
+
 function formatearDireccion(direccion) {
   if (!direccion) return ''
   const partes = [
@@ -71,6 +80,7 @@ export async function enviarEmailConfirmacionCliente(pedido) {
           </div>
 
           ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueEntrega(pedido)}
           ${pedido.factura_pdf_url ? `<p><a href="${pedido.factura_pdf_url}" style="color: #2F6B63;">📄 Ver tu factura</a></p>` : ''}
 
           <p style="margin-top: 24px; color: #8A8378; font-size: 14px;">
@@ -192,6 +202,7 @@ export async function enviarEmailInstruccionesTransferencia(pedido) {
           </div>
 
           ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueEntrega(pedido)}
 
           <p style="margin-top: 24px; color: #8A8378; font-size: 14px;">
             Cualquier consulta, respondé este mail o escribinos por WhatsApp.

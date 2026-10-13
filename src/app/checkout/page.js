@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import SelectorEnvio from './SelectorEnvio'
 import BrandBrickMP from './BrandBrickMP'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
+import { textoConfeccion } from '@/lib/configConfeccion'
 
 export default function Checkout() {
   const { items, total, totalProductos, costoEnvio, zonaEnvio, pagar, vaciarCarrito } = useCarrito()
@@ -139,6 +140,10 @@ export default function Checkout() {
             Descuento por transferencia ({porcentajeDescuento}%): −${montoDescuento}
           </p>
         )}
+        <p style={{ fontSize: '14px', color: '#555' }}>
+          🧵 Tiempo de confección estimado: {textoConfeccion()}.
+          {esRetiro ? ' Te avisamos cuando esté listo para retirar.' : ''}
+        </p>
         <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${totalAPagar}</p>
       </div>
 

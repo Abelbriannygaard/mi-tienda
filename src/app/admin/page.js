@@ -60,6 +60,7 @@ export default async function PanelAdmin() {
           {pedidos.map((pedido) => {
             const esTransferencia = pedido.metodo_pago === 'transferencia'
             const esperandoTransferencia = esTransferencia && pedido.estado === 'pending'
+            const esRetiro = pedido.zona_envio === 'Retiro en persona'
 
             const estado = esperandoTransferencia
               ? { fondo: '#fef9c3', texto: '#a16207', label: 'Esperando transferencia' }
@@ -156,6 +157,12 @@ export default async function PanelAdmin() {
                   </p>
                 )}
 
+                {esRetiro && (
+                  <p style={{ marginTop: '10px', fontSize: '13px', color: '#2F6B63', fontWeight: '600' }}>
+                    🏬 Retiro en persona (sin envío)
+                  </p>
+                )}
+
                 {pedido.notas && (
                   <p style={{ marginTop: '6px', fontSize: '13px', color: '#666', fontStyle: 'italic' }}>
                     Nota: {pedido.notas}
@@ -166,7 +173,7 @@ export default async function PanelAdmin() {
                   Pedido #{pedido.id} · {esTransferencia ? 'Ref' : 'Pago'} #{pedido.mercadopago_payment_id} · {new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
                 </p>
                 <BotonConfirmarTransferencia pedido={pedido} />
-                {!esperandoTransferencia && <BotonGenerarEtiqueta pedido={pedido} />}
+                {!esperandoTransferencia && !esRetiro && <BotonGenerarEtiqueta pedido={pedido} />}
                 <BotonAnularFactura pedido={pedido} />
                 <EditarDireccionBoton pedido={pedido} />
               </div>
