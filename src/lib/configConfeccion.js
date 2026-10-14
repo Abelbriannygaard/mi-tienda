@@ -4,7 +4,7 @@
 // Para cambiar el plazo que ven los clientes (checkout y emails):
 // cambiá DEMANDA_ACTUAL entre 'alta' y 'baja', guardá y hacé git push.
 
-export const DEMANDA_ACTUAL = 'alta' // 'alta' | 'baja'
+export const DEMANDA_ACTUAL = 'baja' // 'alta' | 'baja'
 
 // Plazos en días corridos
 export const PLAZOS_CONFECCION = {
