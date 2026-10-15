@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { useCarrito } from '@/lib/carrito'
+import { textoConfeccion } from '@/lib/configConfeccion'
 
 // Fotos de TABLA DE TALLES que no deben aparecer nunca en la tarjeta del home.
 // Pegá acá el link de cada foto de tabla, entre comillas y separados por coma. Ejemplo:
@@ -231,10 +232,17 @@ export default function ProductoCardCliente({ producto, variantes }) {
               </div>
             )}
 
+            <div className="mt-5 rounded-xl border border-[#E4DCCF] bg-[#F3EEE6] px-3 py-2.5 text-sm text-[#2E2A26]">
+              <p className="font-semibold text-[#2F6B63]">🧵 Confeccionado a pedido</p>
+              <p className="mt-0.5 text-[#5C564C]">
+                Tiempo de confección: <strong>{textoConfeccion()}</strong>
+              </p>
+            </div>
+
             <button
               onClick={handleAgregar}
               disabled={!varianteElegida || varianteElegida?.stock === 0}
-              className="mt-6 w-full rounded-full bg-[#2F6B63] py-3 text-sm font-semibold text-white transition hover:bg-[#28584F] disabled:bg-[#E4DCCF] disabled:text-[#8A8378]"
+              className="mt-4 w-full rounded-full bg-[#2F6B63] py-3 text-sm font-semibold text-white transition hover:bg-[#28584F] disabled:bg-[#E4DCCF] disabled:text-[#8A8378]"
             >
               {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
             </button>

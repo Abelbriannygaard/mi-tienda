@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { textoConfeccion } from '@/lib/configConfeccion'
 import ProductoCard from './ProductoCard'
 import CarritoIcono from './CarritoIcono'
 import TestimoniosCarousel from './TestimoniosCarousel'
@@ -12,6 +13,9 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-[#FAF6F0]">
+      <div className="bg-[#2F6B63] px-6 py-2.5 text-center text-sm text-white">
+        🧵 Todas las prendas se confeccionan a pedido · Tiempo de confección: <strong>{textoConfeccion()}</strong>
+      </div>
       <header
         className="flex items-center justify-between border-b border-[#E4DCCF] px-6 py-10 md:px-10 md:py-14"
         style={{

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { useCarrito } from '@/lib/carrito'
 import SelectorEnvio from './checkout/SelectorEnvio'
+import { textoConfeccion } from '@/lib/configConfeccion'
 
 export default function CarritoIcono() {
   const {
@@ -229,6 +230,22 @@ export default function CarritoIcono() {
                       <span>Total</span>
                       <span>${total}</span>
                     </div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: '14px',
+                      padding: '10px 12px',
+                      backgroundColor: '#F3EEE6',
+                      border: '1px solid #E4DCCF',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      color: '#2E2A26',
+                    }}
+                  >
+                    <strong style={{ color: '#2F6B63' }}>🧵 Confeccionado a pedido</strong>
+                    <br />
+                    Tiempo de confección: <strong>{textoConfeccion()}</strong>
                   </div>
 
                   <div style={{ marginTop: '14px' }}>
