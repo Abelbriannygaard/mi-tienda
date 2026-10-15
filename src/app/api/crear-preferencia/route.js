@@ -83,12 +83,12 @@ export async function POST(request) {
           items_originales: itemsOriginales,
         },
         back_urls: {
-          success: 'https://tienda.dimedetiambos.com.ar/pago-exitoso',
-          failure: 'https://tienda.dimedetiambos.com.ar/pago-fallido',
-          pending: 'https://tienda.dimedetiambos.com.ar/pago-pendiente',
+          success: 'https://www.dimedetiambos.com.ar/pago-exitoso',
+          failure: 'https://www.dimedetiambos.com.ar/pago-fallido',
+          pending: 'https://www.dimedetiambos.com.ar/pago-pendiente',
         },
         auto_return: 'approved',
-        notification_url: 'https://tienda.dimedetiambos.com.ar/api/webhook-mercadopago',
+        notification_url: 'https://www.dimedetiambos.com.ar/api/webhook-mercadopago',
       },
     })
 

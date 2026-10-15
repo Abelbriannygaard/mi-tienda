@@ -351,7 +351,7 @@ PRODUCTOS Y TALLES:
 - Se hacen talles especiales o a medida a criterio; si la modificación es grande respecto al ambo original, se cobra un adicional
 - Estos son los productos y precios actuales (siempre correctos, tomados directo de la base de datos):
 ${listaDeProductos}
-- Si preguntan por un producto que no está en esta lista, avisá que todavía no está cargado en el sistema y que pueden ver el catálogo completo en https://tienda.dimedetiambos.com.ar
+- Si preguntan por un producto que no está en esta lista, avisá que todavía no está cargado en el sistema y que pueden ver el catálogo completo en https://www.dimedetiambos.com.ar
 ENVÍOS:
 - Envían a todo el país
 - Carriers disponibles: Andreani, Correo Argentino, OCA y Urbano

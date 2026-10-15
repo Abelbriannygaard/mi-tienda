@@ -250,7 +250,7 @@ export async function enviarEmailNotificacionTransferencia(pedido) {
           ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
 
           <p style="margin-top: 20px;">
-            <a href="https://tienda.dimedetiambos.com.ar/admin" style="color: #2F6B63; font-weight: bold;">Ir al panel para confirmar el pago</a>
+            <a href="https://www.dimedetiambos.com.ar/admin" style="color: #2F6B63; font-weight: bold;">Ir al panel para confirmar el pago</a>
           </p>
         </div>
       `,
