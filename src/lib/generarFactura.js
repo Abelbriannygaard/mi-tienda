@@ -41,6 +41,8 @@ export async function generarFactura(pedido) {
     Concepto: 1,
     DocTipo: docTipo,
     DocNro: docNro,
+    // parche: 5 = Consumidor Final solo si DocTipo es 99; con otro DocTipo falta la condición frente al IVA del cliente
+    ...(Number(docTipo) === 99 ? { CondicionIVAReceptorId: 5 } : {}),
     CbteDesde: proximoNumero,
     CbteHasta: proximoNumero,
     CbteFch: fecha,
