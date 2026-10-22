@@ -44,6 +44,10 @@ export async function GET(request) {
 export async function POST(request) {
   const body = await request.json();
 
+  // Estados de entrega de WhatsApp (sent, delivered, read, failed)
+  const statuses = body?.entry?.[0]?.changes?.[0]?.value?.statuses;
+  if (statuses) console.log("STATUS WhatsApp:", JSON.stringify(statuses));
+
   try {
     const entry = body.entry?.[0];
     const changes = entry?.changes?.[0];
