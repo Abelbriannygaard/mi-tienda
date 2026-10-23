@@ -16,7 +16,7 @@ const supabase = createClient(
 );
 
 const BUCKET_MEDIA = "whatsapp-media";
-const BOT_ACTIVO = false; // apagado mientras Meta revisa la cuenta
+const BOT_ACTIVO = true
 
 // Tipos de archivo que recibimos y cómo se rotulan en el panel
 const ETIQUETAS_MEDIA = {
