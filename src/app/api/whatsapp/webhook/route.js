@@ -16,7 +16,7 @@ const supabase = createClient(
 );
 
 const BUCKET_MEDIA = "whatsapp-media";
-const BOT_ACTIVO = TRUE; // Si se quiere desactivar el bot y que solo responda una persona del local, poner true
+const BOT_ACTIVO = true; // Si se quiere desactivar el bot y que solo responda una persona del local, poner true
 
 // Tipos de archivo que recibimos y cómo se rotulan en el panel
 const ETIQUETAS_MEDIA = {
