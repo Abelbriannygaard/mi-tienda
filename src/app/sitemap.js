@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase'
 
 const DOMINIO = 'https://www.dimedetiambos.com.ar'
 
-// Lista de páginas que se le ofrece a Google. Se arma sola: cada producto cargado en Supabase se suma.
+// Lista de páginas que se le ofrece a Google. Se arma sola: cada producto visible cargado en Supabase se suma.
 export default async function sitemap() {
   const paginas = [
     { url: `${DOMINIO}/`, changeFrequency: 'weekly', priority: 1 },
@@ -12,7 +12,11 @@ export default async function sitemap() {
 
   let productos = []
   try {
-    const { data } = await supabase.from('productos').select('id, created_at').limit(1000)
+    const { data } = await supabase
+      .from('productos')
+      .select('id, created_at')
+      .eq('visible', true)
+      .limit(1000)
     productos = data || []
   } catch (error) {
     // Si falla la consulta, el sitemap sale igual con las páginas fijas

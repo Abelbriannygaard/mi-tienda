@@ -10,6 +10,7 @@ export default async function Home() {
   const { data: productos } = await supabase
     .from('productos')
     .select('*')
+    .eq('visible', true)
 
   return (
     <main className="min-h-screen bg-[#FAF6F0]">

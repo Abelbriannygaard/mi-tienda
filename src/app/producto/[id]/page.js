@@ -5,10 +5,12 @@ import ProductoDetalle from './ProductoDetalle'
 export default async function PaginaProducto({ params }) {
   const { id } = await params
 
+  // Solo productos visibles: si está oculto o no existe, da 404
   const { data: producto } = await supabase
     .from('productos')
     .select('*')
     .eq('id', id)
+    .eq('visible', true)
     .single()
 
   if (!producto) {
