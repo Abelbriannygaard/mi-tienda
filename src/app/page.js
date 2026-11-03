@@ -1,14 +1,20 @@
 import { supabase } from '@/lib/supabase'
 import { textoConfeccion } from '@/lib/configConfeccion'
-import { UMBRAL_ENVIO_GRATIS } from '@/lib/configEnvioGratis'
 import ProductoCard from './ProductoCard'
 import CarritoIcono from './CarritoIcono'
 import TestimoniosCarousel from './TestimoniosCarousel'
 
 export const dynamic = 'force-dynamic'
 
+// Animación del cartel verde: el texto se desplaza hacia la izquierda sin cortes
+const CSS_CARTEL =
+  '.cartel-track{display:flex;width:max-content;animation:cartel-scroll 30s linear infinite}' +
+  '.cartel-track:hover{animation-play-state:paused}' +
+  '.cartel-grupo{display:flex;flex-shrink:0}' +
+  '@keyframes cartel-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
+  '@media (prefers-reduced-motion: reduce){.cartel-track{animation:none}}'
+
 export default async function Home() {
-  // Solo los productos marcados como visibles (el producto de prueba queda afuera)
   const { data: productos } = await supabase
     .from('productos')
     .select('*')
@@ -16,9 +22,19 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-[#FAF6F0]">
-      <div className="bg-[#2F6B63] px-6 py-2.5 text-center text-sm text-white">
-        🧵 Todas las prendas se confeccionan a pedido · Tiempo de confección: <strong>{textoConfeccion()}</strong>
-        {' '}· 🚚 Envío gratis desde <strong>${UMBRAL_ENVIO_GRATIS.toLocaleString('es-AR')}</strong>
+      <style>{CSS_CARTEL}</style>
+      <div className="overflow-hidden bg-[#2F6B63] py-2.5 text-sm text-white">
+        <div className="cartel-track">
+          {[0, 1].map((copia) => (
+            <div key={copia} className="cartel-grupo" aria-hidden={copia === 1}>
+              {[0, 1, 2, 3].map((n) => (
+                <span key={n} className="whitespace-nowrap px-8">
+                  🧵 Todas las prendas se confeccionan a pedido · Tiempo de confección: <strong>{textoConfeccion()}</strong>
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
       <header
         className="flex items-center justify-between border-b border-[#E4DCCF] px-6 py-10 md:px-10 md:py-14"
