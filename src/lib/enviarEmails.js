@@ -47,6 +47,16 @@ function bloqueEntrega(pedido) {
           ${esRetiro ? '<p style="color: #2E2A26;"><strong>Retiro en persona:</strong> te avisamos por WhatsApp o por email cuando tu pedido esté listo, y coordinamos el día y el horario para retirarlo.</p>' : ''}`
 }
 
+   function lineaEnvio(pedido) {
+     if (!pedido.zona_envio) return ''
+     const esRetiro = pedido.zona_envio === 'Retiro en persona'
+     const texto =
+       Number(pedido.costo_envio) === 0 && !esRetiro
+         ? 'Costo de envío: ¡Gratis!'
+         : `Envío (${pedido.zona_envio}): $${pedido.costo_envio}`
+     return `<p style="margin: 10px 0 0; color: #2E2A26;">${texto}</p>`
+   }
+
 function formatearDireccion(direccion) {
   if (!direccion) return ''
   const partes = [
@@ -75,7 +85,7 @@ export async function enviarEmailConfirmacionCliente(pedido) {
           <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
             <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
             ${formatearItems(pedido.items)}
-            ${pedido.zona_envio ? `<p style="margin: 10px 0 0; color: #2E2A26;">Envío (${pedido.zona_envio}): $${pedido.costo_envio}</p>` : ''}
+         ${lineaEnvio(pedido)}
             <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
           </div>
 
@@ -119,7 +129,7 @@ export async function enviarEmailNotificacionVenta(pedido) {
 
           <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
             ${formatearItems(pedido.items)}
-            ${pedido.zona_envio ? `<p style="margin: 10px 0 0; color: #2E2A26;">Envío (${pedido.zona_envio}): $${pedido.costo_envio}</p>` : ''}
+         ${lineaEnvio(pedido)}
             <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
           </div>
 
@@ -197,7 +207,7 @@ export async function enviarEmailInstruccionesTransferencia(pedido) {
           <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
             <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
             ${formatearItems(pedido.items)}
-            ${pedido.zona_envio ? `<p style="margin: 10px 0 0; color: #2E2A26;">Envío (${pedido.zona_envio}): $${pedido.costo_envio}</p>` : ''}
+         ${lineaEnvio(pedido)}
             <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
           </div>
 
@@ -242,7 +252,7 @@ export async function enviarEmailNotificacionTransferencia(pedido) {
 
           <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
             ${formatearItems(pedido.items)}
-            ${pedido.zona_envio ? `<p style="margin: 10px 0 0; color: #2E2A26;">Envío (${pedido.zona_envio}): $${pedido.costo_envio}</p>` : ''}
+         ${lineaEnvio(pedido)}
             <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total a recibir: $${pedido.total}</p>
           </div>
 

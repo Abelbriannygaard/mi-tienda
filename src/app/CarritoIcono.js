@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { useCarrito } from '@/lib/carrito'
 import SelectorEnvio from './checkout/SelectorEnvio'
-import { textoConfeccion } from '@/lib/configConfeccion'
 
 export default function CarritoIcono() {
   const {
@@ -12,6 +11,7 @@ export default function CarritoIcono() {
     cantidadTotal,
     totalProductos,
     costoEnvio,
+    envioGratis,
     total,
     zonaEnvio,
     quitarDelCarrito,
@@ -223,29 +223,23 @@ export default function CarritoIcono() {
                       <span>${totalProductos}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px', color: '#666' }}>
-                      <span>Envío {zonaEnvio ? `(${zonaEnvio.nombre})` : '(sin elegir)'}</span>
-                      <span>${costoEnvio}</span>
+                      <span>
+                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona'
+                          ? 'Costo de envío'
+                          : `Envío ${zonaEnvio ? `(${zonaEnvio.nombre})` : '(sin elegir)'}`}
+                      </span>
+                      <span>
+                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona' ? (
+                          <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
+                        ) : (
+                          `$${costoEnvio}`
+                        )}
+                      </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '18px', marginTop: '8px' }}>
                       <span>Total</span>
                       <span>${total}</span>
                     </div>
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: '14px',
-                      padding: '10px 12px',
-                      backgroundColor: '#F3EEE6',
-                      border: '1px solid #E4DCCF',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      color: '#2E2A26',
-                    }}
-                  >
-                    <strong style={{ color: '#2F6B63' }}>🧵 Confeccionado a pedido</strong>
-                    <br />
-                    Tiempo de confección: <strong>{textoConfeccion()}</strong>
                   </div>
 
                   <div style={{ marginTop: '14px' }}>

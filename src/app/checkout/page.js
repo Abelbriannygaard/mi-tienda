@@ -9,6 +9,7 @@ import SelectorEnvio from './SelectorEnvio'
 import BrandBrickMP from './BrandBrickMP'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 import { textoConfeccion } from '@/lib/configConfeccion'
+import { ID_ENVIO_GRATIS_AUTO } from '@/lib/configEnvioGratis'
 
 export default function Checkout() {
   const { items, total, totalProductos, costoEnvio, envioGratis, faltaParaEnvioGratis, zonaEnvio, pagar, vaciarCarrito } = useCarrito()
@@ -47,7 +48,14 @@ export default function Checkout() {
     if (!datos.email.trim()) return 'Ingresá tu email'
     if (!datos.dni.trim()) return 'Ingresá tu DNI'
     if (!datos.telefono.trim()) return 'Ingresá tu teléfono'
-    if (!zonaEnvio) return 'Elegí una zona de envío'
+    if (envioGratis && !esRetiro) {
+      // Con envío gratis la empresa se elige sola al cargar el código postal
+      if (zonaEnvio?.id !== ID_ENVIO_GRATIS_AUTO) {
+        return 'Todavía no pudimos confirmar tu envío gratis. Revisá tu código postal.'
+      }
+    } else if (!zonaEnvio) {
+      return 'Elegí una zona de envío'
+    }
     if (!esRetiro) {
       if (!datos.calle.trim() || !datos.numero.trim() || !datos.ciudad.trim() || !datos.codigoPostal.trim()) {
         return 'Completá la dirección de envío completa'
@@ -134,14 +142,15 @@ export default function Checkout() {
             {item.nombre} {item.color ? `(${item.color})` : ''} x{item.cantidad} — ${item.precio * item.cantidad}
           </p>
         ))}
-        <p>
-          Envío ({zonaEnvio?.nombre || 'sin elegir'}):{' '}
-          {zonaEnvio && envioGratis && !esRetiro ? (
-            <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
-          ) : (
-            `$${costoEnvio}`
-          )}
-        </p>
+        {envioGratis && !esRetiro ? (
+          <p>
+            Costo de envío: <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
+          </p>
+        ) : (
+          <p>
+            Envío ({zonaEnvio?.nombre || 'sin elegir'}): ${costoEnvio}
+          </p>
+        )}
         {!esRetiro && !envioGratis && (
           <p style={{ fontSize: '14px', color: '#15803d' }}>
             🚚 Sumá ${faltaParaEnvioGratis} más en productos y el envío es gratis.
