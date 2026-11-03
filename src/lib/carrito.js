@@ -1,5 +1,6 @@
 'use client'
 import { createContext, useContext, useState, useEffect } from 'react'
+import { UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
 
 const CarritoContext = createContext()
 
@@ -123,7 +124,10 @@ export function CarritoProvider({ children }) {
   }
 
   const totalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
-  const costoEnvio = zonaEnvio ? zonaEnvio.costo : 0
+  // Envío gratis desde cierto monto de productos (ver configEnvioGratis.js)
+  const envioGratis = totalProductos >= UMBRAL_ENVIO_GRATIS
+  const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - totalProductos)
+  const costoEnvio = calcularCostoEnvio(totalProductos, zonaEnvio)
   const total = totalProductos + costoEnvio
   const cantidadTotal = items.reduce((acc, item) => acc + item.cantidad, 0)
 
@@ -138,6 +142,8 @@ export function CarritoProvider({ children }) {
         total,
         totalProductos,
         costoEnvio,
+        envioGratis,
+        faltaParaEnvioGratis,
         cantidadTotal,
         pagar,
         zonaEnvio,

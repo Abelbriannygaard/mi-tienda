@@ -1,5 +1,6 @@
 import { MercadoPagoConfig, Preference } from 'mercadopago'
 import { NextResponse } from 'next/server'
+import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
@@ -52,11 +53,15 @@ export async function POST(request) {
       }
     })
 
-    if (zonaEnvio && zonaEnvio.costo > 0) {
+    // Envío gratis desde cierto monto: el costo se recalcula acá, no se confía en el del navegador
+    const subtotalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+    const costoEnvio = calcularCostoEnvio(subtotalProductos, zonaEnvio)
+
+    if (zonaEnvio && costoEnvio > 0) {
       itemsParaMP.push({
         title: `Envío - ${zonaEnvio.nombre}`,
         quantity: 1,
-        unit_price: zonaEnvio.costo,
+        unit_price: costoEnvio,
         currency_id: 'ARS',
       })
     }
@@ -79,7 +84,7 @@ export async function POST(request) {
         },
         metadata: {
           datos_cliente: datosCliente,
-          zona_envio: zonaEnvio,
+          zona_envio: zonaEnvio ? { ...zonaEnvio, costo: costoEnvio } : null,
           items_originales: itemsOriginales,
         },
         back_urls: {

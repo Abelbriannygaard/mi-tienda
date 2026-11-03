@@ -19,7 +19,7 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
   const [cargando, setCargando] = useState(false)
   const [errorCotizacion, setErrorCotizacion] = useState(null)
   
-  const { items, zonaEnvio, setZonaEnvio } = useCarrito()
+  const { items, zonaEnvio, setZonaEnvio, envioGratis } = useCarrito()
 
   const retiroSeleccionado = zonaEnvio?.id === RETIRO_EN_PERSONA.id
 
@@ -199,7 +199,15 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
                   }
                   style={{ marginRight: '10px' }}
                 />
-                <strong>{opcion.service}</strong> — ${opcion.price}
+                <strong>{opcion.service}</strong> —{' '}
+                {envioGratis ? (
+                  <>
+                    <s style={{ color: '#999' }}>${opcion.price}</s>{' '}
+                    <span style={{ color: '#15803d', fontWeight: 'bold' }}>¡Gratis!</span>
+                  </>
+                ) : (
+                  `$${opcion.price}`
+                )}
                 <br />
                 <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
                   {opcion.deliveryText}

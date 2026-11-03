@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { textoConfeccion } from '@/lib/configConfeccion'
+import { UMBRAL_ENVIO_GRATIS } from '@/lib/configEnvioGratis'
 import ProductoCard from './ProductoCard'
 import CarritoIcono from './CarritoIcono'
 import TestimoniosCarousel from './TestimoniosCarousel'
@@ -7,6 +8,7 @@ import TestimoniosCarousel from './TestimoniosCarousel'
 export const dynamic = 'force-dynamic'
 
 export default async function Home() {
+  // Solo los productos marcados como visibles (el producto de prueba queda afuera)
   const { data: productos } = await supabase
     .from('productos')
     .select('*')
@@ -16,6 +18,7 @@ export default async function Home() {
     <main className="min-h-screen bg-[#FAF6F0]">
       <div className="bg-[#2F6B63] px-6 py-2.5 text-center text-sm text-white">
         🧵 Todas las prendas se confeccionan a pedido · Tiempo de confección: <strong>{textoConfeccion()}</strong>
+        {' '}· 🚚 Envío gratis desde <strong>${UMBRAL_ENVIO_GRATIS.toLocaleString('es-AR')}</strong>
       </div>
       <header
         className="flex items-center justify-between border-b border-[#E4DCCF] px-6 py-10 md:px-10 md:py-14"

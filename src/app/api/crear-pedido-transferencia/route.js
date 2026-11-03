@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
+import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
 import {
   enviarEmailInstruccionesTransferencia,
   enviarEmailNotificacionTransferencia,
@@ -68,7 +69,7 @@ export async function POST(request) {
 
     const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
     const descuento = Math.round(subtotal * DESCUENTO_TRANSFERENCIA)
-    const costoEnvio = Number(zonaEnvio.costo) || 0
+    const costoEnvio = calcularCostoEnvio(subtotal, zonaEnvio)
     const total = subtotal - descuento + costoEnvio
 
     // El descuento queda como una línea con precio negativo, así todo suma igual

@@ -1,286 +1,151 @@
-'use client'
-
-import Script from 'next/script'
-
-import { useState } from 'react'
-import { useCarrito } from '@/lib/carrito'
-import { useRouter } from 'next/navigation'
-import SelectorEnvio from './SelectorEnvio'
-import BrandBrickMP from './BrandBrickMP'
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
-import { textoConfeccion } from '@/lib/configConfeccion'
+import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import {
+  enviarEmailInstruccionesTransferencia,
+  enviarEmailNotificacionTransferencia,
+} from '@/lib/enviarEmails'
 
-export default function Checkout() {
-  const { items, total, totalProductos, costoEnvio, zonaEnvio, pagar, vaciarCarrito } = useCarrito()
-  const router = useRouter()
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
 
-  const [datos, setDatos] = useState({
-    nombre: '',
-    email: '',
-    dni: '',
-    telefono: '',
-    calle: '',
-    numero: '',
-    pisoDepto: '',
-    ciudad: '',
-    codigoPostal: '',
-    notas: '',
-  })
+async function verificarRecaptcha(token) {
+  if (!token) return false
 
-  const [enviando, setEnviando] = useState(false)
-  const [metodoPago, setMetodoPago] = useState('mercadopago')
+  try {
+    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${token}`,
+    })
 
-  const esRetiro = zonaEnvio?.nombre === 'Retiro en persona'
-
-  // Descuento por transferencia: solo sobre los productos, no sobre el envío
-  const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
-  const montoDescuento = Math.round(totalProductos * DESCUENTO_TRANSFERENCIA)
-  const conTransferencia = metodoPago === 'transferencia'
-  const totalAPagar = conTransferencia ? total - montoDescuento : total
-
-  function handleChange(e) {
-    setDatos({ ...datos, [e.target.name]: e.target.value })
+    const data = await res.json()
+    return data.success && data.score >= 0.5 && data.action === 'checkout'
+  } catch (error) {
+    console.error('Error al verificar reCAPTCHA:', error)
+    return false
   }
+}
 
-  function validar() {
-    if (!datos.nombre.trim()) return 'Ingresá tu nombre completo'
-    if (!datos.email.trim()) return 'Ingresá tu email'
-    if (!datos.dni.trim()) return 'Ingresá tu DNI'
-    if (!datos.telefono.trim()) return 'Ingresá tu teléfono'
-    if (!zonaEnvio) return 'Elegí una zona de envío'
-    if (!esRetiro) {
-      if (!datos.calle.trim() || !datos.numero.trim() || !datos.ciudad.trim() || !datos.codigoPostal.trim()) {
-        return 'Completá la dirección de envío completa'
+export async function POST(request) {
+  try {
+    const { items, zonaEnvio, datosCliente, recaptchaToken } = await request.json()
+
+    const recaptchaValido = await verificarRecaptcha(recaptchaToken)
+    if (!recaptchaValido) {
+      return NextResponse.json(
+        { error: 'No pudimos verificar que sos una persona real. Recargá la página e intentá de nuevo.' },
+        { status: 400 }
+      )
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'Tu carrito está vacío' }, { status: 400 })
+    }
+    if (!zonaEnvio) {
+      return NextResponse.json({ error: 'Elegí una zona de envío' }, { status: 400 })
+    }
+    if (!datosCliente?.nombre || !datosCliente?.email) {
+      return NextResponse.json({ error: 'Faltan tus datos de contacto' }, { status: 400 })
+    }
+
+    // Mismo criterio que crear-preferencia: se toman nombre y precio del carrito.
+    // Se limpian cantidad y precio para que no entren valores raros.
+    const itemsPedido = items.map((item) => {
+      const cantidad = Math.max(1, parseInt(item.cantidad, 10) || 1)
+      const precio = Math.max(0, Number(item.precio) || 0)
+      const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null].filter(Boolean).join(' - ')
+
+      return {
+        nombre: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+        cantidad,
+        precio,
+        imagen_url: item.imagen_url || null,
       }
-    }
-    return null
-  }
+    })
 
-  async function handleSubmit(e) {
-    e.preventDefault()
+    const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+    const descuento = Math.round(subtotal * DESCUENTO_TRANSFERENCIA)
+    const costoEnvio = calcularCostoEnvio(subtotal, zonaEnvio)
+    const total = subtotal - descuento + costoEnvio
 
-    if (items.length === 0) {
-      alert('Tu carrito está vacío')
-      return
-    }
-
-    const error = validar()
-    if (error) {
-      alert(error)
-      return
-    }
-
-    setEnviando(true)
-    try {
-      const token = await new Promise((resolve, reject) => {
-        window.grecaptcha.ready(() => {
-          window.grecaptcha
-            .execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'checkout' })
-            .then(resolve)
-            .catch(reject)
-        })
+    // El descuento queda como una línea con precio negativo, así todo suma igual
+    // en el admin, en los emails y en la factura
+    if (descuento > 0) {
+      itemsPedido.push({
+        nombre: `Descuento por transferencia (${Math.round(DESCUENTO_TRANSFERENCIA * 100)}%)`,
+        cantidad: 1,
+        precio: -descuento,
+        imagen_url: null,
       })
-
-      if (conTransferencia) {
-        const res = await fetch('/api/crear-pedido-transferencia', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items, zonaEnvio, datosCliente: datos, recaptchaToken: token }),
-        })
-        const data = await res.json()
-
-        if (!res.ok) {
-          alert(data.error || 'Hubo un error al procesar tu pedido. Probá de nuevo.')
-          setEnviando(false)
-          return
-        }
-
-        // La pantalla siguiente lee estos datos para mostrar el monto y el número de pedido
-        sessionStorage.setItem(
-          'pedido_transferencia',
-          JSON.stringify({ id: data.pedido_id, total: data.total, descuento: data.descuento })
-        )
-        vaciarCarrito()
-        router.push('/pago-transferencia')
-        return
-      }
-
-      await pagar(datos, token)
-    } catch (err) {
-      alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
-      setEnviando(false)
     }
-  }
 
-  if (items.length === 0) {
-    return (
-      <main style={{ padding: '40px', textAlign: 'center' }}>
-        <h1>Tu carrito está vacío</h1>
-        <button onClick={() => router.push('/')} style={{ marginTop: '20px', padding: '10px 20px', cursor: 'pointer' }}>
-          Volver a la tienda
-        </button>
-      </main>
-    )
-  }
+    const direccion = datosCliente.calle
+      ? {
+          calle: datosCliente.calle,
+          numero: datosCliente.numero,
+          pisoDepto: datosCliente.pisoDepto || null,
+          ciudad: datosCliente.ciudad,
+          codigoPostal: datosCliente.codigoPostal || null,
+        }
+      : null
 
-  return (
-    <main style={{ padding: 'clamp(16px, 5vw, 40px)', maxWidth: '600px', margin: '0 auto' }}>
-      <Script src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`} />
-      <h1>Finalizar compra</h1>
-      <div style={{ backgroundColor: '#f7f7f7', padding: '16px', borderRadius: '8px', marginTop: '20px' }}>
-        <h3>Resumen del pedido</h3>
-        {items.map((item) => (
-          <p key={`${item.id}-${item.variante_id || ''}`}>
-            {item.nombre} {item.color ? `(${item.color})` : ''} x{item.cantidad} — ${item.precio * item.cantidad}
-          </p>
-        ))}
-        <p>Envío ({zonaEnvio?.nombre || 'sin elegir'}): ${costoEnvio}</p>
-        {conTransferencia && (
-          <p style={{ color: '#15803d' }}>
-            Descuento por transferencia ({porcentajeDescuento}%): −${montoDescuento}
-          </p>
-        )}
-        <p style={{ fontSize: '14px', color: '#555' }}>
-          🧵 Tiempo de confección estimado: {textoConfeccion()}.
-          {esRetiro ? ' Te avisamos cuando esté listo para retirar.' : ''}
-        </p>
-        <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${totalAPagar}</p>
-      </div>
+    // La tabla identifica cada pedido por esta columna: se usa una referencia propia que arranca con TR-
+    const referencia =
+      'TR-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase()
 
-      <SelectorEnvio codigoPostal={datos.codigoPostal} />
+    const { data: pedido, error: errorInsert } = await supabaseAdmin
+      .from('pedidos')
+      .insert({
+        mercadopago_payment_id: referencia,
+        estado: 'pending',
+        metodo_pago: 'transferencia',
+        descuento,
+        total,
+        items: itemsPedido,
+        comprador_email: datosCliente.email || null,
+        cliente_nombre: datosCliente.nombre || null,
+        cliente_dni: datosCliente.dni || null,
+        cliente_telefono: datosCliente.telefono || null,
+        direccion,
+        zona_envio: zonaEnvio.nombre || null,
+        costo_envio: costoEnvio,
+        envio_carrier: zonaEnvio.envioCarrier || zonaEnvio.envio_carrier || null,
+        envio_service_code: zonaEnvio.envioServiceCode || zonaEnvio.envio_service_code || null,
+        envio_branch_code: zonaEnvio.envioBranchCode || zonaEnvio.envio_branch_code || null,
+        notas: datosCliente.notas || null,
+      })
+      .select('id')
+      .single()
 
-      <form onSubmit={handleSubmit} style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <label>
-          Nombre completo *
-          <input name="nombre" value={datos.nombre} onChange={handleChange} style={inputStyle} />
-        </label>
+    if (errorInsert) {
+      console.error('Error al guardar el pedido por transferencia:', errorInsert)
+      return NextResponse.json({ error: 'No se pudo guardar el pedido. Probá de nuevo.' }, { status: 500 })
+    }
 
-        <label>
-          Email *
-          <input name="email" type="email" value={datos.email} onChange={handleChange} style={inputStyle} />
-        </label>
+    const pedidoParaEmail = {
+      id: pedido.id,
+      cliente_nombre: datosCliente.nombre || null,
+      comprador_email: datosCliente.email || null,
+      cliente_telefono: datosCliente.telefono || null,
+      cliente_dni: datosCliente.dni || null,
+      items: itemsPedido,
+      total,
+      zona_envio: zonaEnvio.nombre || null,
+      costo_envio: costoEnvio,
+      direccion,
+      notas: datosCliente.notas || null,
+    }
 
-        <label>
-          DNI *
-          <input name="dni" value={datos.dni} onChange={handleChange} style={inputStyle} />
-        </label>
+    await enviarEmailInstruccionesTransferencia(pedidoParaEmail)
+    await enviarEmailNotificacionTransferencia(pedidoParaEmail)
 
-        <label>
-          Teléfono *
-          <input name="telefono" value={datos.telefono} onChange={handleChange} style={inputStyle} />
-        </label>
-
-        {!esRetiro && (
-          <>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <label style={{ flex: 2, minWidth: '140px' }}>
-                Calle *
-                <input name="calle" value={datos.calle} onChange={handleChange} style={inputStyle} />
-              </label>
-              <label style={{ flex: 1, minWidth: '100px' }}>
-                Número *
-                <input name="numero" value={datos.numero} onChange={handleChange} style={inputStyle} />
-              </label>
-            </div>
-            <label>
-              Piso / Depto (opcional)
-              <input name="pisoDepto" value={datos.pisoDepto} onChange={handleChange} style={inputStyle} placeholder="Ej: 3° B" />
-            </label>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <label style={{ flex: 1, minWidth: '140px' }}>
-                Ciudad *
-                <input name="ciudad" value={datos.ciudad} onChange={handleChange} style={inputStyle} />
-              </label>
-              <label style={{ flex: 1, minWidth: '140px' }}>
-                Código Postal *
-                <input name="codigoPostal" value={datos.codigoPostal} onChange={handleChange} style={inputStyle} />
-              </label>
-            </div>
-          </>
-        )}
-
-        <label>
-          Notas adicionales (opcional)
-          <textarea name="notas" value={datos.notas} onChange={handleChange} style={{ ...inputStyle, minHeight: '60px' }} />
-        </label>
-
-        <div style={{ marginTop: '8px' }}>
-          <p style={{ margin: '0 0 8px', fontWeight: 'bold' }}>Forma de pago</p>
-
-          <label style={opcionPagoStyle(metodoPago === 'mercadopago')}>
-            <input
-              type="radio"
-              name="metodoPago"
-              checked={metodoPago === 'mercadopago'}
-              onChange={() => setMetodoPago('mercadopago')}
-            />
-            <span>
-              <strong>Mercado Pago</strong>
-              <br />
-              <small style={{ color: '#666' }}>Tarjeta, dinero en cuenta, cuotas y más</small>
-            </span>
-          </label>
-
-          <label style={{ ...opcionPagoStyle(conTransferencia), marginTop: '8px' }}>
-            <input
-              type="radio"
-              name="metodoPago"
-              checked={conTransferencia}
-              onChange={() => setMetodoPago('transferencia')}
-            />
-            <span>
-              <strong>Transferencia bancaria</strong>{' '}
-              <span style={{ color: '#15803d', fontWeight: 'bold' }}>{porcentajeDescuento}% de descuento</span>
-              <br />
-              <small style={{ color: '#666' }}>
-                Ahorrás ${montoDescuento}. Te mostramos los datos al terminar el pedido.
-              </small>
-            </span>
-          </label>
-        </div>
-
-        {!conTransferencia && <BrandBrickMP />}
-
-        <button
-          type="submit"
-          disabled={enviando}
-          style={{
-            marginTop: '10px',
-            padding: '14px',
-            fontSize: '16px',
-            backgroundColor: enviando ? '#ccc' : conTransferencia ? '#2F6B63' : '#009ee3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: enviando ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {enviando ? 'Procesando...' : conTransferencia ? 'Confirmar pedido' : 'Confirmar y pagar'}
-        </button>
-      </form>
-    </main>
-  )
-}
-
-const inputStyle = {
-  display: 'block',
-  width: '100%',
-  padding: '10px',
-  marginTop: '4px',
-  border: '1px solid #ccc',
-  borderRadius: '6px',
-  boxSizing: 'border-box',
-}
-
-function opcionPagoStyle(seleccionada) {
-  return {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '12px',
-    border: seleccionada ? '2px solid #2F6B63' : '1px solid #ccc',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    backgroundColor: seleccionada ? '#f0f7f5' : '#fff',
+    return NextResponse.json({ pedido_id: pedido.id, total, descuento })
+  } catch (error) {
+    console.error('Error al crear pedido por transferencia:', error)
+    return NextResponse.json({ error: 'Error al crear el pedido' }, { status: 500 })
   }
 }
