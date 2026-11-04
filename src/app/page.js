@@ -3,6 +3,8 @@ import { textoConfeccion } from '@/lib/configConfeccion'
 import ProductoCard from './ProductoCard'
 import CarritoIcono from './CarritoIcono'
 import TestimoniosCarousel from './TestimoniosCarousel'
+import TestimoniosCarousel from './TestimoniosCarousel'
+import BannerCarrusel from './BannerCarrusel'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +52,11 @@ export default async function Home() {
         </span>
         <CarritoIcono />
       </header>
+    
+      <BannerCarrusel confeccion={textoConfeccion()} />
       <TestimoniosCarousel />
+      <TestimoniosCarousel />
+
       <div
         className="relative px-6 md:px-10 py-10"
         style={{
