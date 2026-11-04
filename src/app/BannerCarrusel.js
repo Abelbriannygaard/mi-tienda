@@ -20,10 +20,9 @@ export default function BannerCarrusel({ confeccion }) {
       href: null,
     },
     {
-      tipo: 'texto',
-      titulo: '5% de descuento',
-      subtitulo: 'pagando por transferencia',
-      detalle: 'Se aplica en el carrito',
+      tipo: 'imagen',
+      src: '/banner-descuento.png',
+      alt: '5% de descuento pagando por transferencia',
       href: null,
     },
     {
