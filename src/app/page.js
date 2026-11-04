@@ -3,7 +3,6 @@ import { textoConfeccion } from '@/lib/configConfeccion'
 import ProductoCard from './ProductoCard'
 import CarritoIcono from './CarritoIcono'
 import TestimoniosCarousel from './TestimoniosCarousel'
-import TestimoniosCarousel from './TestimoniosCarousel'
 import BannerCarrusel from './BannerCarrusel'
 
 export const dynamic = 'force-dynamic'
