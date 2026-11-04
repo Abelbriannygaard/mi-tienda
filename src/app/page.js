@@ -53,8 +53,7 @@ export default async function Home() {
       </header>
     
       <BannerCarrusel confeccion={textoConfeccion()} />
-      <TestimoniosCarousel />
-      <TestimoniosCarousel />
+           <TestimoniosCarousel />
 
       <div
         className="relative px-6 md:px-10 py-10"
