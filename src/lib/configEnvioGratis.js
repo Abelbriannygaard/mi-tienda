@@ -4,7 +4,7 @@
 // El monto se compara contra el total de los PRODUCTOS (antes del descuento por transferencia
 // y sin contar el envío). Para cambiar el monto, editá UMBRAL_ENVIO_GRATIS y hacé git push.
 
-export const UMBRAL_ENVIO_GRATIS = 100000
+export const UMBRAL_ENVIO_GRATIS = 150000
 
 // Cuando el envío es gratis, el cliente NO elige empresa: el sistema la elige solo.
 // Orden de preferencia (siempre a domicilio). Se usa la primera que tenga tarifa para su código postal.

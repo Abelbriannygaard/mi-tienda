@@ -16,7 +16,7 @@ export default function BannerCarrusel({ confeccion }) {
     {
       tipo: 'imagen',
       src: '/banner-envio-gratis.png',
-      alt: 'Envío gratis en compras desde $100.000 a todo el país',
+      alt: 'Envío gratis en compras desde $150.000 a todo el país',
       href: null,
     },
     {
