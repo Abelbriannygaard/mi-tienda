@@ -10,6 +10,13 @@ const SECCIONES = [
   { href: '/guia-de-talles', label: 'Guía de talles' },
 ]
 
+// Umbrales de scroll. Al achicarse, el header pierde ~52px de alto y el contenido sube,
+// lo que hace bajar el scrollY. Si la distancia entre los dos umbrales es menor que ese
+// salto, el header rebota (se achica, se agranda, se achica...).
+// Por eso están separados por mucho más de 52px.
+const UMBRAL_ACHICAR = 140
+const UMBRAL_AGRANDAR = 10
+
 export default function Header() {
   const [busqueda, setBusqueda] = useState('')
   const [menuAbierto, setMenuAbierto] = useState(false)
@@ -17,11 +24,10 @@ export default function Header() {
   const router = useRouter()
 
   // Achica el header al bajar y lo agranda al volver arriba.
-  // Usa dos umbrales (60 y 20) para que no parpadee en el límite.
   useEffect(() => {
     function onScroll() {
       const y = window.scrollY
-      setAchicado((prev) => (prev ? y > 20 : y > 60))
+      setAchicado((prev) => (prev ? y > UMBRAL_AGRANDAR : y > UMBRAL_ACHICAR))
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -47,6 +53,8 @@ export default function Header() {
         backgroundColor: '#fff',
         boxShadow: achicado ? '0 2px 10px rgba(0,0,0,0.08)' : 'none',
         transition: 'padding .3s ease, box-shadow .3s ease',
+        // Evita que el navegador reajuste el scroll solo cuando cambia el alto del header
+        overflowAnchor: 'none',
       }}
     >
       <div
@@ -79,6 +87,7 @@ export default function Header() {
                   height: achicado ? '52px' : '88px',
                   width: 'auto',
                   objectFit: 'contain',
+                  transition: 'height .3s ease',
                 }}
               />
             </span>
