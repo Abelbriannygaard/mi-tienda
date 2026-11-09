@@ -24,14 +24,6 @@ function fotosValidas(variante) {
   )
 }
 
-// Las miniaturas se muestran a 36px, así que no hace falta la foto grande.
-// En Mercado Libre, el prefijo D_NQ_NP_ (o D_NQ_NP_2X_) es la versión grande y D_Q_NP_ la liviana.
-// Si la liviana no existe para esa foto, la miniatura vuelve sola a la original (ver onError abajo).
-function urlMiniatura(url) {
-  if (!url) return url
-  return url.replace('/D_NQ_NP_2X_', '/D_Q_NP_').replace('/D_NQ_NP_', '/D_Q_NP_')
-}
-
 export default function ProductoCardCliente({ producto, variantes }) {
   const coloresUnicos = Array.from(new Set(variantes.map((v) => v.color).filter(Boolean)))
 
@@ -135,20 +127,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
               }`}
               title={f.color}
             >
-              <img
-                src={urlMiniatura(f.imagen_url)}
-                alt={f.color}
-                loading="lazy"
-                decoding="async"
-                onError={(e) => {
-                  // Si la versión liviana no existe, usa la original (una sola vez, sin bucle)
-                  if (!e.currentTarget.dataset.fallback) {
-                    e.currentTarget.dataset.fallback = '1'
-                    e.currentTarget.src = f.imagen_url
-                  }
-                }}
-                className="h-full w-full object-cover"
-              />
+              <img src={f.imagen_url} alt={f.color} loading="lazy" decoding="async" className="h-full w-full object-cover" />
             </button>
           ))}
       </div>
