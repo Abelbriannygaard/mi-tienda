@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 
-// Dirección oficial del sitio, sin www. Tiene que ser la misma que SITIO en producto/[id]/page.js
-const SITIO = 'https://dimedetiambos.com.ar'
+// Dirección oficial del sitio, con www (a la que Vercel redirige). Tiene que ser la misma que SITIO en producto/[id]/page.js
+const SITIO = 'https://www.dimedetiambos.com.ar'
 
 // Se vuelve a generar como máximo cada hora
 export const revalidate = 3600
