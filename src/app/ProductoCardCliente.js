@@ -94,7 +94,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
   return (
     // flex-col: la tarjeta se estira al alto de su fila y el botón queda siempre abajo (mt-auto)
     <div className="flex w-[250px] flex-col rounded-2xl border border-[#E4DCCF] bg-white overflow-hidden transition-shadow hover:shadow-[0_8px_24px_-8px_rgba(46,42,38,0.18)]">
-      <Link href={`/producto/${producto.id}`} className="block shrink-0">
+      <Link href={`/producto/${producto.id}`} prefetch={false} className="block shrink-0">
         {/* Mismo recuadro para todas las fotos. Fondo blanco: los márgenes de la foto no se notan */}
         <div className="aspect-[4/5] w-full overflow-hidden bg-white">
           {fotoActiva?.imagen_url && (
@@ -132,7 +132,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
           ))}
       </div>
 
-      <Link href={`/producto/${producto.id}`} className="block px-4 pt-3">
+      <Link href={`/producto/${producto.id}`} prefetch={false} className="block px-4 pt-3">
         {/* Reserva siempre 3 líneas: 3 x 1.3 = 3.9em. Así el precio queda a la misma altura */}
         <h2 className="font-serif text-[17px] leading-[1.3] min-h-[3.9em] text-[#2E2A26]">
           {producto.nombre}
