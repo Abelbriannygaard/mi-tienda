@@ -1,33 +1,31 @@
 import { supabase } from '@/lib/supabase'
 
-const DOMINIO = 'https://www.dimedetiambos.com.ar'
+// Dirección oficial del sitio, sin www. Tiene que ser la misma que SITIO en producto/[id]/page.js
+const SITIO = 'https://dimedetiambos.com.ar'
 
-// Lista de páginas que se le ofrece a Google. Se arma sola: cada producto visible cargado en Supabase se suma.
+// Se vuelve a generar como máximo cada hora
+export const revalidate = 3600
+
 export default async function sitemap() {
+  // Solo productos visibles: los ocultos (como el 999 de prueba) no entran
+  const { data: productos } = await supabase
+    .from('productos')
+    .select('id, created_at')
+    .eq('visible', true)
+    .order('id', { ascending: true })
+
   const paginas = [
-    { url: `${DOMINIO}/`, changeFrequency: 'weekly', priority: 1 },
-    { url: `${DOMINIO}/quienes-somos`, changeFrequency: 'yearly', priority: 0.5 },
-    { url: `${DOMINIO}/guia-de-talles`, changeFrequency: 'yearly', priority: 0.5 },
+    { url: `${SITIO}/`, changeFrequency: 'weekly', priority: 1 },
+    { url: `${SITIO}/quienes-somos`, changeFrequency: 'yearly', priority: 0.5 },
+    { url: `${SITIO}/guia-de-talles`, changeFrequency: 'yearly', priority: 0.5 },
   ]
 
-  let productos = []
-  try {
-    const { data } = await supabase
-      .from('productos')
-      .select('id, created_at')
-      .eq('visible', true)
-      .limit(1000)
-    productos = data || []
-  } catch (error) {
-    // Si falla la consulta, el sitemap sale igual con las páginas fijas
-  }
-
-  const paginasDeProductos = productos.map((p) => ({
-    url: `${DOMINIO}/producto/${p.id}`,
+  const urlsProductos = (productos || []).map((p) => ({
+    url: `${SITIO}/producto/${p.id}`,
     lastModified: p.created_at ? new Date(p.created_at) : undefined,
     changeFrequency: 'weekly',
     priority: 0.8,
   }))
 
-  return [...paginas, ...paginasDeProductos]
+  return [...paginas, ...urlsProductos]
 }
