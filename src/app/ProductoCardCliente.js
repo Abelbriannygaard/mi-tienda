@@ -101,6 +101,8 @@ export default function ProductoCardCliente({ producto, variantes }) {
             <img
               src={fotoActiva.imagen_url}
               alt={`${producto.nombre} - ${fotoActiva.color}`}
+              loading="lazy"
+              decoding="async"
               className="h-full w-full object-cover object-top"
             />
           )}
@@ -125,7 +127,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
               }`}
               title={f.color}
             >
-              <img src={f.imagen_url} alt={f.color} className="h-full w-full object-cover" />
+              <img src={f.imagen_url} alt={f.color} loading="lazy" decoding="async" className="h-full w-full object-cover" />
             </button>
           ))}
       </div>
