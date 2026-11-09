@@ -92,14 +92,16 @@ export default function ProductoCardCliente({ producto, variantes }) {
   }
 
   return (
-    <div className="w-[250px] rounded-2xl border border-[#E4DCCF] bg-white overflow-hidden transition-shadow hover:shadow-[0_8px_24px_-8px_rgba(46,42,38,0.18)]">
-      <Link href={`/producto/${producto.id}`} className="block">
+    // flex-col: la tarjeta se estira al alto de su fila y el botón queda siempre abajo (mt-auto)
+    <div className="flex w-[250px] flex-col rounded-2xl border border-[#E4DCCF] bg-white overflow-hidden transition-shadow hover:shadow-[0_8px_24px_-8px_rgba(46,42,38,0.18)]">
+      <Link href={`/producto/${producto.id}`} className="block shrink-0">
+        {/* Mismo recuadro para todas las fotos: object-cover llena todo el espacio, sin franjas */}
         <div className="aspect-[4/5] w-full overflow-hidden bg-[#F3EEE6]">
           {fotoActiva?.imagen_url && (
             <img
               src={fotoActiva.imagen_url}
               alt={`${producto.nombre} - ${fotoActiva.color}`}
-              className="h-full w-full object-contain"
+              className="h-full w-full object-cover object-top"
             />
           )}
         </div>
@@ -121,7 +123,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
               }`}
               title={f.color}
             >
-              <img src={f.imagen_url} alt={f.color} className="h-full w-full object-contain" />
+              <img src={f.imagen_url} alt={f.color} className="h-full w-full object-cover" />
             </button>
           ))}
         </div>
@@ -136,7 +138,7 @@ export default function ProductoCardCliente({ producto, variantes }) {
         </span>
       </Link>
 
-      <div className="px-4 pb-4 pt-3">
+      <div className="mt-auto px-4 pb-4 pt-3">
         <button
           onClick={abrirModal}
           className="w-full rounded-full bg-[#2F6B63] py-2.5 text-sm font-semibold text-white transition hover:bg-[#28584F]"
