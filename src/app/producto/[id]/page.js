@@ -42,6 +42,15 @@ function coloresDelProducto(variantes) {
   )
 }
 
+// Recorta el texto sin cortar palabras a la mitad y agrega puntos suspensivos si hace falta
+function recortar(texto, max = 155) {
+  if (texto.length <= max) return texto
+  const corte = texto.slice(0, max)
+  const ultimoEspacio = corte.lastIndexOf(' ')
+  const limpio = ultimoEspacio > 100 ? corte.slice(0, ultimoEspacio) : corte
+  return limpio.replace(/[.,;:\s]+$/, '') + '…'
+}
+
 export async function generateMetadata({ params }) {
   const { id } = await params
   const producto = await getProducto(id)
@@ -53,11 +62,12 @@ export async function generateMetadata({ params }) {
 
   const title = lista ? `${producto.nombre} - ${lista}` : producto.nombre
 
-  const base = producto.descripcion ? ` ${producto.descripcion.replace(/\s+/g, ' ').trim()}` : ''
-  const description = (lista ? `Colores: ${lista}.${base}` : base.trim()).slice(0, 160)
+  const base = producto.descripcion ? ` ${producto.descripcion.replace(/[:\s]*Somos DIMEDETIAMBOS[:\s]*/gi, ' ').replace(/\s+/g, ' ').trim()}` : ''
+  const description = recortar(lista ? `Colores: ${lista}.${base}` : base.trim())
 
   return {
-    title,
+    // absolute: sin el sufijo "| Dimedeti Ambos" del layout, para que el título sea más corto
+    title: { absolute: title },
     description,
     alternates: { canonical: `${SITIO}/producto/${id}` },
   }
