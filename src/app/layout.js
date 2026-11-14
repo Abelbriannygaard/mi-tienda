@@ -3,6 +3,7 @@ import Header from './Header'
 import './globals.css'
 import FloatingWhatsApp from './FloatingWhatsApp'
 import Footer from './Footer'
+import MetaPixel from '../components/MetaPixel'
 
 export const metadata = {
   // Dirección oficial: Google la usa como base para todas las direcciones del sitio
@@ -29,6 +30,7 @@ export default function RootLayout({ children }) {
       <body>
         <CarritoProvider>
           <Header />
+          <MetaPixel />
           {children}
           <FloatingWhatsApp />
           <Footer />
