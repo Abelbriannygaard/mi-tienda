@@ -33,7 +33,18 @@ export default function ProductoDetalle({ producto, variantes }) {
   const [modalAbierto, setModalAbierto] = useState(false)
 
   const { agregarAlCarrito, abrirPanel } = useCarrito()
-
+// META PIXEL: visita de producto
+useEffect(() => {
+  if (typeof window.fbq === 'function') {
+    window.fbq('track', 'ViewContent', {
+      content_ids: [String(producto.id)],
+      content_type: 'product',
+      content_name: producto.nombre,
+      value: Number(producto.precio),
+      currency: 'ARS',
+    })
+  }
+}, [producto.id])
   // Estado para la cantidad elegida
   const [cantidad, setCantidad] = useState(1)
 
@@ -100,7 +111,16 @@ export default function ProductoDetalle({ producto, variantes }) {
       },
       cantidad
     )
-
+// META PIXEL: producto agregado al carrito
+if (typeof window.fbq === 'function') {
+  window.fbq('track', 'AddToCart', {
+    content_ids: [String(producto.id)],
+    content_type: 'product',
+    content_name: producto.nombre,
+    value: Number(producto.precio) * cantidad,
+    currency: 'ARS',
+  })
+}
     // Abre el panel del carrito para que se vea lo recién agregado
     abrirPanel()
   }
