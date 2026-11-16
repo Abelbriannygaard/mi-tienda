@@ -1,6 +1,8 @@
 'use client'
 
 import Script from 'next/script'
+
+import { useState, useEffect, useRef } from 'react'
 import { useCarrito } from '@/lib/carrito'
 import { useRouter } from 'next/navigation'
 import SelectorEnvio from './SelectorEnvio'
@@ -8,7 +10,6 @@ import BrandBrickMP from './BrandBrickMP'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 import { textoConfeccion } from '@/lib/configConfeccion'
 import { ID_ENVIO_GRATIS_AUTO } from '@/lib/configEnvioGratis'
-import { useState, useEffect, useRef } from 'react'
 import { track } from '@/lib/fbq'
 
 export default function Checkout() {
@@ -30,6 +31,25 @@ export default function Checkout() {
 
   const [enviando, setEnviando] = useState(false)
   const [metodoPago, setMetodoPago] = useState('mercadopago')
+
+  // META PIXEL: InitiateCheckout (una sola vez). Los hooks van siempre antes de cualquier return.
+  const checkoutIniciado = useRef(false)
+
+  useEffect(() => {
+    if (checkoutIniciado.current || items.length === 0) return
+    checkoutIniciado.current = true
+    track('InitiateCheckout', {
+      value: totalProductos,
+      currency: 'ARS',
+      content_type: 'product',
+      num_items: items.reduce((a, i) => a + i.cantidad, 0),
+      contents: items.map((i) => ({
+        id: String(i.id),
+        quantity: i.cantidad,
+        item_price: i.precio,
+      })),
+    })
+  }, [items, totalProductos])
 
   const esRetiro = zonaEnvio?.nombre === 'Retiro en persona'
 
@@ -66,23 +86,6 @@ export default function Checkout() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-const checkoutIniciado = useRef(false)
-
-useEffect(() => {
-  if (checkoutIniciado.current || items.length === 0) return
-  checkoutIniciado.current = true
-  track('InitiateCheckout', {
-    value: totalProductos,
-    currency: 'ARS',
-    content_type: 'product',
-    num_items: items.reduce((a, i) => a + i.cantidad, 0),
-    contents: items.map((i) => ({
-      id: String(i.id),
-      quantity: i.cantidad,
-      item_price: i.precio,
-    })),
-  })
-}, [items, totalProductos])
 
     if (items.length === 0) {
       alert('Tu carrito está vacío')
@@ -125,21 +128,23 @@ useEffect(() => {
           'pedido_transferencia',
           JSON.stringify({ id: data.pedido_id, total: data.total, descuento: data.descuento })
         )
-track(
-  'Purchase',
-  {
-    value: Number(data.total),
-    currency: 'ARS',
-    content_type: 'product',
-    num_items: items.reduce((a, i) => a + i.cantidad, 0),
-    contents: items.map((i) => ({
-      id: String(i.id),
-      quantity: i.cantidad,
-      item_price: i.precio,
-    })),
-  },
-  `purchase_${data.pedido_id}`
-)
+
+        // META PIXEL: Purchase por transferencia
+        track(
+          'Purchase',
+          {
+            value: Number(data.total),
+            currency: 'ARS',
+            content_type: 'product',
+            num_items: items.reduce((a, i) => a + i.cantidad, 0),
+            contents: items.map((i) => ({
+              id: String(i.id),
+              quantity: i.cantidad,
+              item_price: i.precio,
+            })),
+          },
+          `purchase_${data.pedido_id}`
+        )
 
         vaciarCarrito()
         router.push('/pago-transferencia')
