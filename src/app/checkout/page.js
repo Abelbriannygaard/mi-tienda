@@ -1,7 +1,6 @@
 'use client'
 
 import Script from 'next/script'
-import { useState } from 'react'
 import { useCarrito } from '@/lib/carrito'
 import { useRouter } from 'next/navigation'
 import SelectorEnvio from './SelectorEnvio'
