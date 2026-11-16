@@ -45,12 +45,13 @@ export async function POST(request) {
         .filter(Boolean)
         .join(' - ')
 
-      return {
-        title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
-        quantity: item.cantidad,
-        unit_price: item.precio,
-        currency_id: 'ARS',
-      }
+     return {
+  id: String(item.id),
+  title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+  quantity: item.cantidad,
+  unit_price: item.precio,
+  currency_id: 'ARS',
+}
     })
 
     // Envío gratis desde cierto monto: el costo se recalcula acá, no se confía en el del navegador
@@ -59,6 +60,7 @@ export async function POST(request) {
 
     if (zonaEnvio && costoEnvio > 0) {
       itemsParaMP.push({
+         id: 'envio',
         title: `Envío - ${zonaEnvio.nombre}`,
         quantity: 1,
         unit_price: costoEnvio,

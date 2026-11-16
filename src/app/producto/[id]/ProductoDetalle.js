@@ -37,6 +37,7 @@ export default function ProductoDetalle({ producto, variantes }) {
 useEffect(() => {
   if (typeof window.fbq === 'function') {
     window.fbq('track', 'ViewContent', {
+      contents: [{ id: String(producto.id), quantity: 1, item_price: Number(producto.precio) }],
       content_ids: [String(producto.id)],
       content_type: 'product',
       content_name: producto.nombre,
@@ -114,6 +115,7 @@ useEffect(() => {
 // META PIXEL: producto agregado al carrito
 if (typeof window.fbq === 'function') {
   window.fbq('track', 'AddToCart', {
+    contents: [{ id: String(producto.id), quantity: cantidad, item_price: Number(producto.precio) }],
     content_ids: [String(producto.id)],
     content_type: 'product',
     content_name: producto.nombre,

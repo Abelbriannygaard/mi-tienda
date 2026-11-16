@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { useCarrito } from '@/lib/carrito'
 import { textoConfeccion } from '@/lib/configConfeccion'
+import { track } from '@/lib/fbq'
 
 // Fotos de TABLA DE TALLES que no deben aparecer nunca en la tarjeta del home.
 // Pegá acá el link de cada foto de tabla, entre comillas y separados por coma. Ejemplo:
@@ -76,20 +77,30 @@ export default function ProductoCardCliente({ producto, variantes }) {
     if (encontrada) setVarianteElegida(encontrada)
   }
 
-  function handleAgregar() {
-    agregarAlCarrito(
-      {
-        ...producto,
-        variante_id: varianteElegida?.id,
-        color: varianteElegida?.color,
-        talle: varianteElegida?.talle,
-        imagen_url: varianteElegida?.imagen_url,
-      },
-      cantidad
-    )
-    setModalAbierto(false)
-    abrirPanel()
-  }
+function handleAgregar() {
+  agregarAlCarrito(
+    {
+      ...producto,
+      variante_id: varianteElegida?.id,
+      color: varianteElegida?.color,
+      talle: varianteElegida?.talle,
+      imagen_url: varianteElegida?.imagen_url,
+    },
+    cantidad
+  )
+
+  track('AddToCart', {
+    value: producto.precio * cantidad,
+    currency: 'ARS',
+    content_type: 'product',
+    content_ids: [String(producto.id)],
+    content_name: producto.nombre,
+    contents: [{ id: String(producto.id), quantity: cantidad, item_price: producto.precio }],
+  })
+
+  setModalAbierto(false)
+  abrirPanel()
+}
 
   return (
     // flex-col: la tarjeta se estira al alto de su fila y el botón queda siempre abajo (mt-auto)

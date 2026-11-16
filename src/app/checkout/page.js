@@ -1,7 +1,6 @@
 'use client'
 
 import Script from 'next/script'
-
 import { useState } from 'react'
 import { useCarrito } from '@/lib/carrito'
 import { useRouter } from 'next/navigation'
@@ -10,6 +9,8 @@ import BrandBrickMP from './BrandBrickMP'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 import { textoConfeccion } from '@/lib/configConfeccion'
 import { ID_ENVIO_GRATIS_AUTO } from '@/lib/configEnvioGratis'
+import { useState, useEffect, useRef } from 'react'
+import { track } from '@/lib/fbq'
 
 export default function Checkout() {
   const { items, total, totalProductos, costoEnvio, envioGratis, faltaParaEnvioGratis, zonaEnvio, pagar, vaciarCarrito } = useCarrito()
@@ -66,6 +67,23 @@ export default function Checkout() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+const checkoutIniciado = useRef(false)
+
+useEffect(() => {
+  if (checkoutIniciado.current || items.length === 0) return
+  checkoutIniciado.current = true
+  track('InitiateCheckout', {
+    value: totalProductos,
+    currency: 'ARS',
+    content_type: 'product',
+    num_items: items.reduce((a, i) => a + i.cantidad, 0),
+    contents: items.map((i) => ({
+      id: String(i.id),
+      quantity: i.cantidad,
+      item_price: i.precio,
+    })),
+  })
+}, [items, totalProductos])
 
     if (items.length === 0) {
       alert('Tu carrito está vacío')
@@ -108,6 +126,22 @@ export default function Checkout() {
           'pedido_transferencia',
           JSON.stringify({ id: data.pedido_id, total: data.total, descuento: data.descuento })
         )
+track(
+  'Purchase',
+  {
+    value: Number(data.total),
+    currency: 'ARS',
+    content_type: 'product',
+    num_items: items.reduce((a, i) => a + i.cantidad, 0),
+    contents: items.map((i) => ({
+      id: String(i.id),
+      quantity: i.cantidad,
+      item_price: i.precio,
+    })),
+  },
+  `purchase_${data.pedido_id}`
+)
+
         vaciarCarrito()
         router.push('/pago-transferencia')
         return
