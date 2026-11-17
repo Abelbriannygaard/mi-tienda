@@ -15,11 +15,31 @@ const CSS_CARTEL =
   '@keyframes cartel-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
   '@media (prefers-reduced-motion: reduce){.cartel-track{animation:none}}'
 
+// Orden del catálogo: primero ambos, luego chaquetas y al final pantalones.
+// Se mira cómo EMPIEZA el nombre, para que "Ambo ... Pantalon con Puños" no caiga en pantalones.
+function grupo(nombre = '') {
+  const n = nombre
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+  if (n.startsWith('ambo')) return 0
+  if (n.startsWith('chaqueta')) return 1
+  if (n.startsWith('pantalon')) return 2
+  return 3
+}
+
 export default async function Home() {
-  const { data: productos } = await supabase
+  const { data } = await supabase
     .from('productos')
     .select('*')
     .eq('visible', true)
+    .order('id', { ascending: true })
+
+  const productos = [...(data || [])].sort(
+    (a, b) => grupo(a.nombre) - grupo(b.nombre)
+  )
 
   return (
     <main className="min-h-screen bg-[#FAF6F0]">
@@ -51,9 +71,9 @@ export default async function Home() {
         </span>
         <CarritoIcono />
       </header>
-    
+
       <BannerCarrusel confeccion={textoConfeccion()} />
-           <TestimoniosCarousel />
+      <TestimoniosCarousel />
 
       <div
         className="relative px-6 md:px-10 py-10"
@@ -66,7 +86,7 @@ export default async function Home() {
         }}
       >
         <div className="flex flex-wrap gap-6">
-          {productos?.map((producto) => (
+          {productos.map((producto) => (
             <ProductoCard key={producto.id} producto={producto} />
           ))}
         </div>
