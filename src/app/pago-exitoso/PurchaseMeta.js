@@ -12,7 +12,13 @@ export default function PurchaseMeta({ pedidoId, value, contents }) {
     } catch {}
     track(
       'Purchase',
-      { value, currency: 'ARS', content_type: 'product', contents },
+      {
+        value,
+        currency: 'ARS',
+        content_type: 'product',
+        contents,
+        num_items: contents.reduce((a, c) => a + c.quantity, 0),
+      },
       key
     )
   }, [])
