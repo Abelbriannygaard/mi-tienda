@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { textoConfeccion } from '@/lib/configConfeccion'
 import ProductoCard from './ProductoCard'
@@ -14,6 +15,14 @@ const CSS_CARTEL =
   '.cartel-grupo{display:flex;flex-shrink:0}' +
   '@keyframes cartel-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
   '@media (prefers-reduced-motion: reduce){.cartel-track{animation:none}}'
+
+// Banner de cada categoría. Los archivos van en public/banners/
+// Si guardaste las imágenes con otra extensión (por ejemplo .webp o .png), cambiala acá.
+const CATEGORIAS = [
+  { id: 0, banner: '/banners/ambos.jpg', alt: 'Ambos' },
+  { id: 1, banner: '/banners/chaquetas.jpg', alt: 'Chaquetas' },
+  { id: 2, banner: '/banners/pantalones.jpg', alt: 'Pantalones' },
+]
 
 // Orden del catálogo: primero ambos, luego chaquetas y al final pantalones.
 // Se mira cómo EMPIEZA el nombre, para que "Ambo ... Pantalon con Puños" no caiga en pantalones.
@@ -40,6 +49,9 @@ export default async function Home() {
   const productos = [...(data || [])].sort(
     (a, b) => grupo(a.nombre) - grupo(b.nombre)
   )
+
+  // Productos cuyo nombre no empieza con ambo, chaqueta ni pantalon: van al final, sin banner
+  const otros = productos.filter((p) => grupo(p.nombre) === 3)
 
   return (
     <main className="min-h-screen bg-[#FAF6F0]">
@@ -85,11 +97,38 @@ export default async function Home() {
           backgroundAttachment: 'fixed',
         }}
       >
-        <div className="flex flex-wrap gap-6">
-          {productos.map((producto) => (
-            <ProductoCard key={producto.id} producto={producto} />
-          ))}
-        </div>
+        {CATEGORIAS.map((cat) => {
+          const lista = productos.filter((p) => grupo(p.nombre) === cat.id)
+          if (lista.length === 0) return null
+
+          return (
+            <section key={cat.id} className="mb-10">
+              <Image
+                src={cat.banner}
+                alt={cat.alt}
+                width={1672}
+                height={941}
+                sizes="(min-width: 768px) 90vw, 100vw"
+                className="mb-6 block h-auto w-full rounded-xl"
+              />
+              <div className="flex flex-wrap gap-6">
+                {lista.map((producto) => (
+                  <ProductoCard key={producto.id} producto={producto} />
+                ))}
+              </div>
+            </section>
+          )
+        })}
+
+        {otros.length > 0 && (
+          <section className="mb-10">
+            <div className="flex flex-wrap gap-6">
+              {otros.map((producto) => (
+                <ProductoCard key={producto.id} producto={producto} />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </main>
   )
