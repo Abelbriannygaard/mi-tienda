@@ -10,10 +10,27 @@ import BrandBrickMP from './BrandBrickMP'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 import { textoConfeccion } from '@/lib/configConfeccion'
 import { ID_ENVIO_GRATIS_AUTO } from '@/lib/configEnvioGratis'
+import { etiquetaDescuento } from '@/lib/configCupones'
 import { track } from '@/lib/fbq'
 
 export default function Checkout() {
-  const { items, total, totalProductos, costoEnvio, envioGratis, faltaParaEnvioGratis, zonaEnvio, pagar, vaciarCarrito } = useCarrito()
+  const {
+    items,
+    total,
+    totalProductos,
+    totalProductosConCupon,
+    costoEnvio,
+    envioGratis,
+    faltaParaEnvioGratis,
+    zonaEnvio,
+    cupon,
+    cuponAplica,
+    descuentoCupon,
+    aplicarCupon,
+    quitarCupon,
+    pagar,
+    vaciarCarrito,
+  } = useCarrito()
   const router = useRouter()
 
   const [datos, setDatos] = useState({
@@ -31,6 +48,11 @@ export default function Checkout() {
 
   const [enviando, setEnviando] = useState(false)
   const [metodoPago, setMetodoPago] = useState('mercadopago')
+
+  // Campo de cupón
+  const [codigoCupon, setCodigoCupon] = useState('')
+  const [mensajeCupon, setMensajeCupon] = useState('')
+  const [aplicandoCupon, setAplicandoCupon] = useState(false)
 
   // META PIXEL: InitiateCheckout (una sola vez). Los hooks van siempre antes de cualquier return.
   const checkoutIniciado = useRef(false)
@@ -53,14 +75,27 @@ export default function Checkout() {
 
   const esRetiro = zonaEnvio?.nombre === 'Retiro en persona'
 
-  // Descuento por transferencia: solo sobre los productos, no sobre el envío
+  // Descuento por transferencia: solo sobre los productos (ya con el cupón aplicado), no sobre el envío
   const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
-  const montoDescuento = Math.round(totalProductos * DESCUENTO_TRANSFERENCIA)
+  const montoDescuento = Math.round(totalProductosConCupon * DESCUENTO_TRANSFERENCIA)
   const conTransferencia = metodoPago === 'transferencia'
   const totalAPagar = conTransferencia ? total - montoDescuento : total
 
   function handleChange(e) {
     setDatos({ ...datos, [e.target.name]: e.target.value })
+  }
+
+  async function handleAplicarCupon() {
+    setMensajeCupon('')
+    setAplicandoCupon(true)
+    const resultado = await aplicarCupon(codigoCupon)
+    setAplicandoCupon(false)
+
+    if (!resultado.ok) {
+      setMensajeCupon(resultado.error)
+      return
+    }
+    setCodigoCupon('')
   }
 
   function validar() {
@@ -113,11 +148,19 @@ export default function Checkout() {
         const res = await fetch('/api/crear-pedido-transferencia', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items, zonaEnvio, datosCliente: datos, recaptchaToken: token }),
+          body: JSON.stringify({
+            items,
+            zonaEnvio,
+            datosCliente: datos,
+            recaptchaToken: token,
+            cuponCodigo: cupon?.codigo || null,
+          }),
         })
         const data = await res.json()
 
         if (!res.ok) {
+          // Si el cupón ya no sirve (venció o se agotó), se saca para que el cliente vea el precio real
+          if (data.cupon_invalido) quitarCupon()
           alert(data.error || 'Hubo un error al procesar tu pedido. Probá de nuevo.')
           setEnviando(false)
           return
@@ -153,7 +196,12 @@ export default function Checkout() {
 
       await pagar(datos, token)
     } catch (err) {
-      alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
+      if (err?.cuponInvalido) {
+        quitarCupon()
+        alert(err.message)
+      } else {
+        alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
+      }
       setEnviando(false)
     }
   }
@@ -180,6 +228,11 @@ export default function Checkout() {
             {item.nombre} {item.color ? `(${item.color})` : ''} x{item.cantidad} — ${item.precio * item.cantidad}
           </p>
         ))}
+        {cuponAplica && descuentoCupon > 0 && (
+          <p style={{ color: '#15803d' }}>
+            Cupón {cupon.codigo} ({etiquetaDescuento(cupon)}): −${descuentoCupon}
+          </p>
+        )}
         {envioGratis && !esRetiro ? (
           <p>
             Costo de envío: <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
@@ -204,6 +257,74 @@ export default function Checkout() {
           {esRetiro ? ' Te avisamos cuando esté listo para retirar.' : ''}
         </p>
         <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${totalAPagar}</p>
+      </div>
+
+      <div style={{ marginTop: '16px' }}>
+        {cupon ? (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '12px',
+              border: '1px solid #bbf7d0',
+              backgroundColor: '#f0fdf4',
+              borderRadius: '8px',
+            }}
+          >
+            <span style={{ fontSize: '14px', color: '#15803d' }}>
+              🎟️ Cupón <strong>{cupon.codigo}</strong> ({etiquetaDescuento(cupon)})
+              {!cuponAplica && (
+                <>
+                  <br />
+                  <small style={{ color: '#a16207' }}>
+                    Se aplica con una compra mínima de ${Number(cupon.compra_minima).toLocaleString('es-AR')} en productos.
+                  </small>
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={quitarCupon}
+              style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '6px', background: '#fff', cursor: 'pointer' }}
+            >
+              Quitar
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              value={codigoCupon}
+              onChange={(e) => setCodigoCupon(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  if (codigoCupon.trim() && !aplicandoCupon) handleAplicarCupon()
+                }
+              }}
+              placeholder="¿Tenés un cupón?"
+              autoCapitalize="characters"
+              style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+            />
+            <button
+              type="button"
+              onClick={handleAplicarCupon}
+              disabled={aplicandoCupon || !codigoCupon.trim()}
+              style={{
+                padding: '0 18px',
+                border: 'none',
+                borderRadius: '6px',
+                color: 'white',
+                backgroundColor: aplicandoCupon || !codigoCupon.trim() ? '#ccc' : '#2F6B63',
+                cursor: aplicandoCupon || !codigoCupon.trim() ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {aplicandoCupon ? '...' : 'Aplicar'}
+            </button>
+          </div>
+        )}
+        {mensajeCupon && <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#b91c1c' }}>{mensajeCupon}</p>}
       </div>
 
       <SelectorEnvio codigoPostal={datos.codigoPostal} />

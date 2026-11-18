@@ -1,6 +1,12 @@
 import { MercadoPagoConfig, Preference } from 'mercadopago'
 import { NextResponse } from 'next/server'
 import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import {
+  validarCuponParaPedido,
+  usarCupon,
+  devolverUsoCupon,
+  repartirDescuentoEnItems,
+} from '@/lib/cupones'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
@@ -27,8 +33,11 @@ async function verificarRecaptcha(token) {
 }
 
 export async function POST(request) {
+  // Si el pago no se llega a crear, se devuelve el uso del cupón que se había reservado
+  let cuponReservado = null
+
   try {
-    const { items, zonaEnvio, datosCliente, recaptchaToken } = await request.json()
+    const { items, zonaEnvio, datosCliente, recaptchaToken, cuponCodigo } = await request.json()
 
     const recaptchaValido = await verificarRecaptcha(recaptchaToken)
     if (!recaptchaValido) {
@@ -38,6 +47,37 @@ export async function POST(request) {
       )
     }
 
+    const subtotalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+
+    // Cupón: se valida y se calcula acá, nunca se confía en el descuento que manda el navegador
+    let cupon = null
+    let descuentoCupon = 0
+
+    if (cuponCodigo) {
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotalProductos)
+      if (!validacion.ok) {
+        return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
+      }
+      if (validacion.descuento >= subtotalProductos) {
+        return NextResponse.json(
+          { error: 'Este cupón cubre todo el pedido y no se puede usar con Mercado Pago. Escribinos y lo resolvemos.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+
+      const reservado = await usarCupon(validacion.cupon.codigo)
+      if (!reservado) {
+        return NextResponse.json(
+          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+
+      cuponReservado = validacion.cupon.codigo
+      cupon = validacion.cupon
+      descuentoCupon = validacion.descuento
+    }
+
     const preference = new Preference(client)
 
     const itemsParaMP = items.map((item) => {
@@ -45,22 +85,27 @@ export async function POST(request) {
         .filter(Boolean)
         .join(' - ')
 
-     return {
-  id: String(item.id),
-  title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
-  quantity: item.cantidad,
-  unit_price: item.precio,
-  currency_id: 'ARS',
-}
+      return {
+        id: String(item.id),
+        title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+        quantity: item.cantidad,
+        unit_price: item.precio,
+        currency_id: 'ARS',
+      }
     })
 
-    // Envío gratis desde cierto monto: el costo se recalcula acá, no se confía en el del navegador
-    const subtotalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
-    const costoEnvio = calcularCostoEnvio(subtotalProductos, zonaEnvio)
+    // Mercado Pago no acepta líneas con precio negativo: el descuento del cupón se reparte
+    // entre los precios de los productos (el total queda correcto)
+    const itemsConCupon = repartirDescuentoEnItems(itemsParaMP, descuentoCupon)
+
+    // Envío gratis desde cierto monto (medido después del cupón): el costo se recalcula acá,
+    // no se confía en el del navegador
+    const subtotalConCupon = subtotalProductos - descuentoCupon
+    const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
 
     if (zonaEnvio && costoEnvio > 0) {
-      itemsParaMP.push({
-         id: 'envio',
+      itemsConCupon.push({
+        id: 'envio',
         title: `Envío - ${zonaEnvio.nombre}`,
         quantity: 1,
         unit_price: costoEnvio,
@@ -79,7 +124,7 @@ export async function POST(request) {
 
     const resultado = await preference.create({
       body: {
-        items: itemsParaMP,
+        items: itemsConCupon,
         payer: {
           name: datosCliente?.nombre,
           email: datosCliente?.email,
@@ -88,6 +133,7 @@ export async function POST(request) {
           datos_cliente: datosCliente,
           zona_envio: zonaEnvio ? { ...zonaEnvio, costo: costoEnvio } : null,
           items_originales: itemsOriginales,
+          cupon: cupon ? { codigo: cupon.codigo, descuento: descuentoCupon } : null,
         },
         back_urls: {
           success: 'https://www.dimedetiambos.com.ar/pago-exitoso',
@@ -102,6 +148,7 @@ export async function POST(request) {
     return NextResponse.json({ id: resultado.id, init_point: resultado.init_point })
   } catch (error) {
     console.error('Error al crear preferencia:', error)
+    if (cuponReservado) await devolverUsoCupon(cuponReservado)
     return NextResponse.json({ error: 'Error al crear la preferencia de pago' }, { status: 500 })
   }
 }

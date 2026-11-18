@@ -32,7 +32,13 @@ export default async function PanelAdmin() {
         <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>Pedidos</h1>
         <div style={{ display: 'flex', gap: '10px' }}>
           <Link
-            href="/admin/envio-manual"
+  href="/admin/cupones"
+  style={{ padding: '8px 16px', fontSize: '14px', border: '1px solid #2F6B63', borderRadius: '8px', color: '#2F6B63', textDecoration: 'none' }}
+>
+  🎟️ Cupones
+</Link>
+          <Link
+                      href="/admin/envio-manual"
             style={{ padding: '8px 16px', fontSize: '14px', border: '1px solid #15803d', borderRadius: '8px', color: '#15803d', textDecoration: 'none' }}
           >
             📦 Envío manual

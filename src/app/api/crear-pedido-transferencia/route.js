@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import { nombreLineaCupon } from '@/lib/configCupones'
+import { validarCuponParaPedido, usarCupon, devolverUsoCupon } from '@/lib/cupones'
 import {
   enviarEmailInstruccionesTransferencia,
   enviarEmailNotificacionTransferencia,
@@ -31,8 +33,11 @@ async function verificarRecaptcha(token) {
 }
 
 export async function POST(request) {
+  // Si el pedido no se llega a guardar, se devuelve el uso del cupón que se había reservado
+  let cuponReservado = null
+
   try {
-    const { items, zonaEnvio, datosCliente, recaptchaToken } = await request.json()
+    const { items, zonaEnvio, datosCliente, recaptchaToken, cuponCodigo } = await request.json()
 
     const recaptchaValido = await verificarRecaptcha(recaptchaToken)
     if (!recaptchaValido) {
@@ -68,12 +73,48 @@ export async function POST(request) {
     })
 
     const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
-    const descuento = Math.round(subtotal * DESCUENTO_TRANSFERENCIA)
-    const costoEnvio = calcularCostoEnvio(subtotal, zonaEnvio)
-    const total = subtotal - descuento + costoEnvio
 
-    // El descuento queda como una línea con precio negativo, así todo suma igual
+    // Cupón: se valida y se calcula acá, nunca se confía en el descuento que manda el navegador
+    let cupon = null
+    let descuentoCupon = 0
+
+    if (cuponCodigo) {
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotal)
+      if (!validacion.ok) {
+        return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
+      }
+
+      const reservado = await usarCupon(validacion.cupon.codigo)
+      if (!reservado) {
+        return NextResponse.json(
+          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+
+      cuponReservado = validacion.cupon.codigo
+      cupon = validacion.cupon
+      descuentoCupon = validacion.descuento
+    }
+
+    // Orden de los descuentos: primero el cupón, después el de transferencia sobre el precio ya con cupón.
+    // El envío gratis se mide sobre el subtotal ya con cupón.
+    const subtotalConCupon = subtotal - descuentoCupon
+    const descuento = Math.round(subtotalConCupon * DESCUENTO_TRANSFERENCIA)
+    const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
+    const total = subtotalConCupon - descuento + costoEnvio
+
+    // Los descuentos quedan como líneas con precio negativo, así todo suma igual
     // en el admin, en los emails y en la factura
+    if (descuentoCupon > 0) {
+      itemsPedido.push({
+        nombre: nombreLineaCupon(cupon),
+        cantidad: 1,
+        precio: -descuentoCupon,
+        imagen_url: null,
+      })
+    }
+
     if (descuento > 0) {
       itemsPedido.push({
         nombre: `Descuento por transferencia (${Math.round(DESCUENTO_TRANSFERENCIA * 100)}%)`,
@@ -104,6 +145,8 @@ export async function POST(request) {
         estado: 'pending',
         metodo_pago: 'transferencia',
         descuento,
+        cupon_codigo: cupon ? cupon.codigo : null,
+        descuento_cupon: descuentoCupon,
         total,
         items: itemsPedido,
         comprador_email: datosCliente.email || null,
@@ -123,8 +166,12 @@ export async function POST(request) {
 
     if (errorInsert) {
       console.error('Error al guardar el pedido por transferencia:', errorInsert)
+      if (cuponReservado) await devolverUsoCupon(cuponReservado)
       return NextResponse.json({ error: 'No se pudo guardar el pedido. Probá de nuevo.' }, { status: 500 })
     }
+
+    // El pedido ya está guardado: el uso del cupón queda firme aunque falle algo después (por ejemplo un email)
+    cuponReservado = null
 
     const pedidoParaEmail = {
       id: pedido.id,
@@ -146,6 +193,7 @@ export async function POST(request) {
     return NextResponse.json({ pedido_id: pedido.id, total, descuento })
   } catch (error) {
     console.error('Error al crear pedido por transferencia:', error)
+    if (cuponReservado) await devolverUsoCupon(cuponReservado)
     return NextResponse.json({ error: 'Error al crear el pedido' }, { status: 500 })
   }
 }
