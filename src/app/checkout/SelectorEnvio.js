@@ -7,6 +7,7 @@ import {
   NOMBRE_ENVIO_GRATIS,
   elegirOpcionEnvioGratis,
 } from '@/lib/configEnvioGratis'
+import { textoConfeccion } from '@/lib/configConfeccion'
 
 // Opción de entrega sin envío. El checkout reconoce este nombre y no pide la dirección.
 const RETIRO_EN_PERSONA = {
@@ -16,6 +17,25 @@ const RETIRO_EN_PERSONA = {
   envioCarrier: null,
   envioServiceCode: null,
   envioBranchCode: null,
+}
+
+function rango(min, max) {
+  return min === max ? `${min}` : `${min} a ${max}`
+}
+
+// Plazos por separado: total, confección (de configConfeccion.js) y envío (según la zona, los define la cotización)
+function TiemposEntrega({ opcion }) {
+  if (!opcion) return null
+
+  return (
+    <div style={{ marginTop: '4px', marginLeft: '24px', fontSize: '12px', color: '#666', lineHeight: 1.6 }}>
+      <div style={{ color: '#333', fontWeight: 600 }}>
+        Llega en aprox. {rango(opcion.diasTotalMin, opcion.diasTotalMax)} días
+      </div>
+      <div>🧵 Confección: {textoConfeccion()}</div>
+      <div>🚚 Envío: {opcion.envioTexto}</div>
+    </div>
+  )
 }
 
 export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
@@ -122,6 +142,13 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
     const aDomicilioSeleccionado = !retiroSeleccionado
     const confirmado = zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO
 
+    // La opción que quedó elegida sola, para mostrar sus plazos
+    const opcionConfirmada = confirmado
+      ? opcionesEnvia.find(
+          (o) => o.carrierSlug === zonaEnvio.envioCarrier && o.serviceCode === zonaEnvio.envioServiceCode
+        )
+      : null
+
     let estado = null
     if (aDomicilioSeleccionado) {
       if (cargando) {
@@ -165,6 +192,7 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
           {estado && (
             <small style={{ display: 'block', marginLeft: '24px', marginTop: '4px', color: '#666' }}>{estado}</small>
           )}
+          {aDomicilioSeleccionado && !cargando && <TiemposEntrega opcion={opcionConfirmada} />}
         </label>
 
         <label
@@ -325,10 +353,8 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
                 ) : (
                   `$${opcion.price}`
                 )}
-                <br />
-                <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
-                  {opcion.deliveryText}
-                </small>
+
+                <TiemposEntrega opcion={opcion} />
 
                 {estaSeleccionado && opcion.branches?.length > 0 && (
                   <div style={{ marginTop: '10px', marginLeft: '24px' }}>

@@ -1,6 +1,34 @@
 import { NextResponse } from 'next/server'
 import { resolverProvincia } from '@/lib/resolverProvincia'
+import { plazoConfeccion } from '@/lib/configConfeccion'
 const CARRIERS = ['correoArgentino', 'andreani', 'urbano', 'oca']
+
+// Plazos de envío que se muestran al cliente. Se editan acá y no dependen de lo que informe el correo.
+const ENVIO_EN_BSAS = { min: 2, max: 2, texto: '2 días' }
+const ENVIO_RESTO_DEL_PAIS = { min: 3, max: 5, texto: '3 a 5 días hábiles' }
+
+// true: la Ciudad de Buenos Aires (códigos postales 1000 a 1499) cuenta con el plazo de Buenos Aires.
+// false: la Ciudad de Buenos Aires cuenta como "resto del país".
+const CABA_CUENTA_COMO_BSAS = true
+
+// Códigos con los que puede figurar la provincia de Buenos Aires
+const CODIGOS_BSAS = ['BA', 'B', 'PBA', 'BUENOS AIRES']
+
+// Devuelve el plazo de envío que corresponde al código postal del cliente
+function plazoDeEnvio(postalCode) {
+  const provincia = String(resolverProvincia(postalCode) || '').trim().toUpperCase()
+  if (CODIGOS_BSAS.includes(provincia)) return ENVIO_EN_BSAS
+
+  const digitos = String(postalCode).match(/\d{4}/)
+  const cp = digitos ? parseInt(digitos[0], 10) : NaN
+  if (CABA_CUENTA_COMO_BSAS && cp >= 1000 && cp <= 1499) return ENVIO_EN_BSAS
+
+  return ENVIO_RESTO_DEL_PAIS
+}
+
+function rangoTexto(min, max) {
+  return min === max ? `${min}` : `${min} a ${max}`
+}
 
 async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
   try {
@@ -83,6 +111,7 @@ async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
       serviceId: rate.serviceId,
       serviceDescription: rate.serviceDescription,
       totalPrice: rate.totalPrice,
+      deliveryEstimate: rate.deliveryEstimate,
       branches: rate.branches,
     })),
     null,
@@ -155,20 +184,14 @@ export async function POST(req) {
       )
     }
 
-    const DIAS_CONFECCION_MIN = 7
-    const DIAS_CONFECCION_MAX = 12
+    // El plazo de confección sale de src/lib/configConfeccion.js (el mismo que ve el cliente en todo el sitio)
+    const confeccion = plazoConfeccion()
+    const envio = plazoDeEnvio(postalCode)
+    const totalMin = confeccion.min + envio.min
+    const totalMax = confeccion.max + envio.max
 
     const rates = todasLasCotizaciones
       .map((rate) => {
-        const matches = rate.deliveryEstimate?.match(/\d+/g)
-
-        const transitDays = matches
-          ? parseInt(matches[matches.length - 1], 10)
-          : 5
-
-        const totalDaysMin = transitDays + DIAS_CONFECCION_MIN
-        const totalDaysMax = transitDays + DIAS_CONFECCION_MAX
-
         return {
           id: `${rate.carrierId || rate.carrier}-${rate.serviceId || rate.service}`,
           carrierSlug: rate.carrier,
@@ -179,7 +202,15 @@ export async function POST(req) {
           service:
             rate.serviceDescription || rate.service || 'Estándar',
           price: Math.round(rate.totalPrice || 0),
-          deliveryText: `Llega en aprox. ${totalDaysMin} a ${totalDaysMax} días corridos (incluye 7 a 12 días de confección)`,
+          // Los días van por separado; el texto queda por si algún otro lugar lo usa
+          diasConfeccionMin: confeccion.min,
+          diasConfeccionMax: confeccion.max,
+          diasEnvioMin: envio.min,
+          diasEnvioMax: envio.max,
+          envioTexto: envio.texto,
+          diasTotalMin: totalMin,
+          diasTotalMax: totalMax,
+          deliveryText: `Llega en aprox. ${rangoTexto(totalMin, totalMax)} días (confección ${rangoTexto(confeccion.min, confeccion.max)} + envío ${envio.texto})`,
           branches: (rate.serviceDescription || '').toLowerCase().trim().endsWith('a sucursal')
             ? (rate.branches || []).map((b) => ({
                 branchCode: b.branch_code,
