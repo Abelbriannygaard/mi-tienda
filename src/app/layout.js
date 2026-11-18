@@ -1,3 +1,4 @@
+// DESTINO: src/app/layout.js  (reemplaza el archivo actual)
 import { CarritoProvider } from '@/lib/carrito'
 import Header from './Header'
 import './globals.css'
@@ -5,6 +6,7 @@ import FloatingWhatsApp from './FloatingWhatsApp'
 import Footer from './Footer'
 import MetaPixel from '../components/MetaPixel'
 import CuponDesdeQR from './CuponDesdeQR'
+import CartelSuscripcion from './CartelSuscripcion'
 
 export const metadata = {
   // Dirección oficial: Google la usa como base para todas las direcciones del sitio
@@ -35,6 +37,7 @@ export default function RootLayout({ children }) {
           <CuponDesdeQR />
           {children}
           <FloatingWhatsApp />
+          <CartelSuscripcion />
           <Footer />
         </CarritoProvider>
       </body>

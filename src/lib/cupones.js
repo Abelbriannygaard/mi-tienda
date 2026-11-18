@@ -1,5 +1,6 @@
-// Archivo: src/lib/cupones.js
-// SOLO para el servidor (rutas api): valida cupones y anota sus usos.
+// DESTINO: src/lib/cupones.js  (reemplaza el archivo actual)
+// SOLO para el servidor (rutas api): valida cupones, anota sus usos y reconoce
+// a la persona que ingresó con Google.
 
 import { createClient } from '@supabase/supabase-js'
 import { normalizarCodigo, calcularDescuentoCupon } from '@/lib/configCupones'
@@ -11,9 +12,40 @@ const supabaseAdmin = createClient(
 
 // Mensaje único para todos los casos, así nadie puede averiguar qué códigos existen
 const MENSAJE_NO_VALIDO = 'El cupón no es válido o ya no está disponible.'
+export const MENSAJE_LOGIN = 'Para usar un cupón ingresá con Google.'
+export const MENSAJE_YA_USADO = 'Ya usaste este cupón con tu cuenta.'
 
-// Comprueba que el cupón exista y esté vigente (sin mirar el monto de la compra)
-export async function buscarCuponValido(codigoCrudo) {
+// Lee la sesión de Google que el navegador manda en la cabecera Authorization.
+// Devuelve el usuario, o null si no hay sesión válida.
+export async function usuarioDesdeRequest(request) {
+  const cabecera = request.headers.get('authorization') || ''
+  const token = cabecera.startsWith('Bearer ') ? cabecera.slice(7).trim() : ''
+  if (!token) return null
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token)
+  if (error || !data?.user) return null
+  return data.user
+}
+
+// ¿Esta cuenta ya usó este cupón?
+async function cuentaYaUsoCupon(userId, codigo) {
+  const { data, error } = await supabaseAdmin
+    .from('cupones_usos')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error al revisar los usos del cupón:', error)
+    return false
+  }
+  return Boolean(data)
+}
+
+// Comprueba que el cupón exista y esté vigente (sin mirar el monto de la compra).
+// Si se pasa userId, también comprueba que esa cuenta no lo haya usado antes.
+export async function buscarCuponValido(codigoCrudo, userId = null) {
   const codigo = normalizarCodigo(codigoCrudo)
   if (!codigo) return { ok: false, error: 'Ingresá un código de cupón.' }
 
@@ -35,12 +67,16 @@ export async function buscarCuponValido(codigoCrudo) {
   if (cupon.fecha_fin && new Date(cupon.fecha_fin) < ahora) return { ok: false, error: MENSAJE_NO_VALIDO }
   if (cupon.max_usos != null && cupon.usos >= cupon.max_usos) return { ok: false, error: MENSAJE_NO_VALIDO }
 
+  if (userId && (await cuentaYaUsoCupon(userId, cupon.codigo))) {
+    return { ok: false, error: MENSAJE_YA_USADO }
+  }
+
   return { ok: true, cupon }
 }
 
 // Valida el cupón contra el subtotal real del pedido y calcula el descuento
-export async function validarCuponParaPedido(codigo, subtotal) {
-  const resultado = await buscarCuponValido(codigo)
+export async function validarCuponParaPedido(codigo, subtotal, userId = null) {
+  const resultado = await buscarCuponValido(codigo, userId)
   if (!resultado.ok) return resultado
 
   const minimo = Number(resultado.cupon.compra_minima) || 0
@@ -71,6 +107,42 @@ export async function usarCupon(codigo) {
 export async function devolverUsoCupon(codigo) {
   const { error } = await supabaseAdmin.rpc('devolver_uso_cupon', { p_codigo: codigo })
   if (error) console.error('Error al devolver el uso del cupón:', error)
+}
+
+// Anota que esta cuenta usó el cupón. Devuelve 'ok', 'ya_usado' o 'error'.
+// El índice único de la base impide que una misma cuenta lo use dos veces,
+// aunque dos pedidos lleguen al mismo tiempo.
+export async function reservarUsoCuenta(userId, codigo, pedidoRef = null) {
+  const { error } = await supabaseAdmin.from('cupones_usos').insert({
+    user_id: userId,
+    codigo,
+    pedido_id: pedidoRef != null ? String(pedidoRef) : null,
+  })
+
+  if (!error) return 'ok'
+  if (error.code === '23505') return 'ya_usado'
+  console.error('Error al anotar el uso del cupón por cuenta:', error)
+  return 'error'
+}
+
+// Deshace la anotación si el pedido no se pudo completar
+export async function liberarUsoCuenta(userId, codigo) {
+  const { error } = await supabaseAdmin
+    .from('cupones_usos')
+    .delete()
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+  if (error) console.error('Error al liberar el uso del cupón por cuenta:', error)
+}
+
+// Une el uso del cupón con el número de pedido (para tener el registro completo)
+export async function vincularUsoConPedido(userId, codigo, pedidoId) {
+  const { error } = await supabaseAdmin
+    .from('cupones_usos')
+    .update({ pedido_id: String(pedidoId) })
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+  if (error) console.error('Error al vincular el uso del cupón con el pedido:', error)
 }
 
 // Mercado Pago no acepta líneas con precio negativo: el descuento se reparte entre los

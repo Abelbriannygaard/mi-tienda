@@ -1,7 +1,9 @@
+// DESTINO: src/lib/guardarPedido.js  (reemplaza el archivo actual)
 import { MercadoPagoConfig, Payment } from 'mercadopago'
 import { createClient } from '@supabase/supabase-js'
 import { enviarEmailConfirmacionCliente, enviarEmailNotificacionVenta } from './enviarEmails'
 import { generarFactura } from './generarFactura'
+import { reservarUsoCuenta } from './cupones'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
@@ -16,7 +18,7 @@ export async function guardarPedido(paymentId) {
   const payment = new Payment(client)
   const pago = await payment.get({ id: paymentId })
 
-    const itemsOriginales = pago.metadata?.items_originales || []
+  const itemsOriginales = pago.metadata?.items_originales || []
 
   const items = pago.additional_info?.items?.map((item, idx) => ({
     nombre: item.title,
@@ -71,6 +73,16 @@ export async function guardarPedido(paymentId) {
   if (error) {
     console.error('Error al guardar el pedido:', error)
     throw new Error('Error al guardar el pedido')
+  }
+
+  // Pago aprobado por primera vez: si llevaba cupón, se anota que esa cuenta ya lo usó
+  // (si el pago nunca se aprobaba, la persona podía volver a intentar con el mismo cupón)
+  if (pago.status === 'approved' && !yaEstabaAprobado) {
+    const cuponUsado = pago.metadata?.cupon
+    const usuarioId = pago.metadata?.usuario_id
+    if (cuponUsado?.codigo && usuarioId) {
+      await reservarUsoCuenta(usuarioId, cuponUsado.codigo, paymentId)
+    }
   }
 
   // Enviar emails solo si el pago quedó aprobado Y es la primera vez que lo procesamos

@@ -1,19 +1,30 @@
+// DESTINO: src/lib/carrito.js  (reemplaza el archivo actual)
 'use client'
 import { createContext, useContext, useState, useEffect } from 'react'
 import { UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
-import { calcularDescuentoCupon } from '@/lib/configCupones'
+import { calcularDescuentoCupon, normalizarCodigo } from '@/lib/configCupones'
+import { supabase } from '@/lib/supabase'
 
 const CarritoContext = createContext()
 
 const CLAVE_ITEMS = 'dimedetiambos_carrito_items'
 const CLAVE_ZONA = 'dimedetiambos_zona_envio'
 const CLAVE_CUPON = 'dimedetiambos_cupon'
+const CLAVE_CUPON_PENDIENTE = 'dimedetiambos_cupon_pendiente'
+const CLAVE_BIENVENIDA_PROBADA = 'dimedetiambos_bienvenida_probada'
+
+// Cupón de bienvenida (se crea desde el panel admin con este mismo código)
+const CODIGO_BIENVENIDA = 'BIENVENIDA5'
 
 export function CarritoProvider({ children }) {
   const [items, setItems] = useState([])
   const [zonaEnvio, setZonaEnvio] = useState(null)
   const [cupon, setCupon] = useState(null)
   const [cargado, setCargado] = useState(false)
+
+  // Sesión con Google
+  const [usuario, setUsuario] = useState(null)
+  const [sesionLista, setSesionLista] = useState(false)
 
   // Estado compartido del panel del carrito (abierto / cerrado)
   const [panelAbierto, setPanelAbierto] = useState(false)
@@ -44,6 +55,27 @@ export function CarritoProvider({ children }) {
       console.error('Error al leer el carrito guardado:', err)
     } finally {
       setCargado(true)
+    }
+  }, [])
+
+  // Escuchar la sesión de Google (al entrar, al volver de Google y al salir)
+  useEffect(() => {
+    let activo = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!activo) return
+      setUsuario(data.session?.user ?? null)
+      setSesionLista(true)
+    })
+
+    const { data: suscripcion } = supabase.auth.onAuthStateChange((_evento, sesion) => {
+      setUsuario(sesion?.user ?? null)
+      setSesionLista(true)
+    })
+
+    return () => {
+      activo = false
+      suscripcion.subscription.unsubscribe()
     }
   }, [])
 
@@ -127,16 +159,57 @@ export function CarritoProvider({ children }) {
     setCupon(null)
   }
 
+  // ---------- Sesión con Google ----------
+
+  async function iniciarSesionGoogle() {
+    const volverA = window.location.href.split('#')[0]
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: volverA },
+    })
+  }
+
+  async function cerrarSesion() {
+    await supabase.auth.signOut()
+    setCupon(null)
+  }
+
+  // Cabeceras para las llamadas a la API: incluyen la sesión para que el servidor sepa quién es
+  async function cabecerasConSesion() {
+    const cabeceras = { 'Content-Type': 'application/json' }
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (token) cabeceras.Authorization = `Bearer ${token}`
+    } catch (err) {
+      console.error('No se pudo leer la sesión:', err)
+    }
+    return cabeceras
+  }
+
   // Comprueba con el servidor que el cupón exista y esté vigente, y lo deja cargado.
+  // Para usar un cupón hay que haber ingresado con Google: si no, se recuerda el código
+  // y se aplica solo apenas la persona ingresa.
   // El descuento definitivo se vuelve a calcular en el servidor al pagar.
   async function aplicarCupon(codigo) {
     try {
       const respuesta = await fetch('/api/validar-cupon', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await cabecerasConSesion(),
         body: JSON.stringify({ codigo }),
       })
       const datos = await respuesta.json()
+
+      if (respuesta.status === 401 || datos.login_requerido) {
+        try {
+          localStorage.setItem(CLAVE_CUPON_PENDIENTE, normalizarCodigo(codigo))
+        } catch {}
+        return {
+          ok: false,
+          loginRequerido: true,
+          error: datos.error || 'Para usar un cupón ingresá con Google.',
+        }
+      }
 
       if (!respuesta.ok || !datos.cupon) {
         return { ok: false, error: datos.error || 'No pudimos aplicar el cupón.' }
@@ -153,10 +226,38 @@ export function CarritoProvider({ children }) {
     setCupon(null)
   }
 
+  // Apenas la persona ingresa con Google:
+  // 1) si había un cupón esperando (ej: venía de un QR), se aplica
+  // 2) si no hay ningún cupón puesto, se prueba el de bienvenida (si ya lo usó, no pasa nada)
+  useEffect(() => {
+    if (!cargado || !sesionLista || !usuario) return
+
+    let pendiente = null
+    try {
+      pendiente = localStorage.getItem(CLAVE_CUPON_PENDIENTE)
+      if (pendiente) localStorage.removeItem(CLAVE_CUPON_PENDIENTE)
+    } catch {}
+
+    if (pendiente) {
+      aplicarCupon(pendiente)
+      return
+    }
+
+    if (!cupon) {
+      let yaProbada = false
+      try {
+        yaProbada = Boolean(sessionStorage.getItem(CLAVE_BIENVENIDA_PROBADA))
+        sessionStorage.setItem(CLAVE_BIENVENIDA_PROBADA, '1')
+      } catch {}
+      if (!yaProbada) aplicarCupon(CODIGO_BIENVENIDA)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargado, sesionLista, usuario])
+
   async function pagar(datosCliente, recaptchaToken) {
     const respuesta = await fetch('/api/crear-preferencia', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await cabecerasConSesion(),
       body: JSON.stringify({
         items,
         zonaEnvio,
@@ -214,6 +315,11 @@ export function CarritoProvider({ children }) {
         descuentoCupon,
         aplicarCupon,
         quitarCupon,
+        usuario,
+        sesionLista,
+        iniciarSesionGoogle,
+        cerrarSesion,
+        cabecerasConSesion,
         panelAbierto,
         abrirPanel,
         cerrarPanel,

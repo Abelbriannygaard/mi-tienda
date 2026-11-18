@@ -1,3 +1,4 @@
+// DESTINO: src/app/checkout/page.js  (reemplaza el archivo actual)
 'use client'
 
 import Script from 'next/script'
@@ -7,21 +8,18 @@ import { useCarrito } from '@/lib/carrito'
 import { useRouter } from 'next/navigation'
 import SelectorEnvio from './SelectorEnvio'
 import BrandBrickMP from './BrandBrickMP'
+import BotonGoogle from '../BotonGoogle'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 import { textoConfeccion } from '@/lib/configConfeccion'
-import { ID_ENVIO_GRATIS_AUTO } from '@/lib/configEnvioGratis'
+import { ID_ENVIO_GRATIS_AUTO, UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
 import { etiquetaDescuento } from '@/lib/configCupones'
 import { track } from '@/lib/fbq'
 
 export default function Checkout() {
   const {
     items,
-    total,
     totalProductos,
-    totalProductosConCupon,
-    costoEnvio,
     envioGratis,
-    faltaParaEnvioGratis,
     zonaEnvio,
     cupon,
     cuponAplica,
@@ -30,6 +28,9 @@ export default function Checkout() {
     quitarCupon,
     pagar,
     vaciarCarrito,
+    usuario,
+    cerrarSesion,
+    cabecerasConSesion,
   } = useCarrito()
   const router = useRouter()
 
@@ -53,6 +54,7 @@ export default function Checkout() {
   const [codigoCupon, setCodigoCupon] = useState('')
   const [mensajeCupon, setMensajeCupon] = useState('')
   const [aplicandoCupon, setAplicandoCupon] = useState(false)
+  const [cuponPideLogin, setCuponPideLogin] = useState(false)
 
   // META PIXEL: InitiateCheckout (una sola vez). Los hooks van siempre antes de cualquier return.
   const checkoutIniciado = useRef(false)
@@ -74,12 +76,23 @@ export default function Checkout() {
   }, [items, totalProductos])
 
   const esRetiro = zonaEnvio?.nombre === 'Retiro en persona'
-
-  // Descuento por transferencia: solo sobre los productos (ya con el cupón aplicado), no sobre el envío
   const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
-  const montoDescuento = Math.round(totalProductosConCupon * DESCUENTO_TRANSFERENCIA)
   const conTransferencia = metodoPago === 'transferencia'
-  const totalAPagar = conTransferencia ? total - montoDescuento : total
+
+  // Los descuentos NO se acumulan: se aplica solo el más alto.
+  // Si empatan (ej. 5% de cupón y 5% de transferencia) queda el de transferencia y el cupón no se gasta.
+  const montoTransferencia = Math.round(totalProductos * DESCUENTO_TRANSFERENCIA)
+  const hayCupon = cuponAplica && descuentoCupon > 0
+  const transferenciaGana = conTransferencia && (!hayCupon || montoTransferencia >= descuentoCupon)
+  const cuponEnUso = hayCupon && !transferenciaGana
+  const descuentoCuponEfectivo = cuponEnUso ? descuentoCupon : 0
+  const descuentoTransferenciaEfectivo = transferenciaGana ? montoTransferencia : 0
+
+  const subtotalEfectivo = totalProductos - descuentoCuponEfectivo
+  const envioGratisEfectivo = subtotalEfectivo >= UMBRAL_ENVIO_GRATIS
+  const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - subtotalEfectivo)
+  const costoEnvioEfectivo = calcularCostoEnvio(subtotalEfectivo, zonaEnvio)
+  const totalAPagar = subtotalEfectivo - descuentoTransferenciaEfectivo + costoEnvioEfectivo
 
   function handleChange(e) {
     setDatos({ ...datos, [e.target.name]: e.target.value })
@@ -87,18 +100,23 @@ export default function Checkout() {
 
   async function handleAplicarCupon() {
     setMensajeCupon('')
+    setCuponPideLogin(false)
     setAplicandoCupon(true)
     const resultado = await aplicarCupon(codigoCupon)
     setAplicandoCupon(false)
 
     if (!resultado.ok) {
       setMensajeCupon(resultado.error)
+      if (resultado.loginRequerido) setCuponPideLogin(true)
       return
     }
     setCodigoCupon('')
   }
 
   function validar() {
+    if (cupon && !usuario) {
+      return 'Para usar el cupón ingresá con Google (o quitá el cupón para seguir sin cuenta).'
+    }
     if (!datos.nombre.trim()) return 'Ingresá tu nombre completo'
     if (!datos.email.trim()) return 'Ingresá tu email'
     if (!datos.dni.trim()) return 'Ingresá tu DNI'
@@ -147,7 +165,7 @@ export default function Checkout() {
       if (conTransferencia) {
         const res = await fetch('/api/crear-pedido-transferencia', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: await cabecerasConSesion(),
           body: JSON.stringify({
             items,
             zonaEnvio,
@@ -159,7 +177,7 @@ export default function Checkout() {
         const data = await res.json()
 
         if (!res.ok) {
-          // Si el cupón ya no sirve (venció o se agotó), se saca para que el cliente vea el precio real
+          // Si el cupón ya no sirve (venció, se agotó o ya lo usaste), se saca para que el cliente vea el precio real
           if (data.cupon_invalido) quitarCupon()
           alert(data.error || 'Hubo un error al procesar tu pedido. Probá de nuevo.')
           setEnviando(false)
@@ -228,28 +246,33 @@ export default function Checkout() {
             {item.nombre} {item.color ? `(${item.color})` : ''} x{item.cantidad} — ${item.precio * item.cantidad}
           </p>
         ))}
-        {cuponAplica && descuentoCupon > 0 && (
+        {cuponEnUso && (
           <p style={{ color: '#15803d' }}>
-            Cupón {cupon.codigo} ({etiquetaDescuento(cupon)}): −${descuentoCupon}
+            Cupón {cupon.codigo} ({etiquetaDescuento(cupon)}): −${descuentoCuponEfectivo}
           </p>
         )}
-        {envioGratis && !esRetiro ? (
+        {hayCupon && transferenciaGana && (
+          <p style={{ fontSize: '14px', color: '#a16207' }}>
+            Tu cupón {cupon.codigo} no se suma al descuento por transferencia: se aplica el mayor.
+          </p>
+        )}
+        {envioGratisEfectivo && !esRetiro ? (
           <p>
             Costo de envío: <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
           </p>
         ) : (
           <p>
-            Envío ({zonaEnvio?.nombre || 'sin elegir'}): ${costoEnvio}
+            Envío ({zonaEnvio?.nombre || 'sin elegir'}): ${costoEnvioEfectivo}
           </p>
         )}
-        {!esRetiro && !envioGratis && (
+        {!esRetiro && !envioGratisEfectivo && (
           <p style={{ fontSize: '14px', color: '#15803d' }}>
             🚚 Sumá ${faltaParaEnvioGratis} más en productos y el envío es gratis.
           </p>
         )}
-        {conTransferencia && (
+        {transferenciaGana && (
           <p style={{ color: '#15803d' }}>
-            Descuento por transferencia ({porcentajeDescuento}%): −${montoDescuento}
+            Descuento por transferencia ({porcentajeDescuento}%): −${descuentoTransferenciaEfectivo}
           </p>
         )}
         <p style={{ fontSize: '14px', color: '#555' }}>
@@ -257,6 +280,40 @@ export default function Checkout() {
           {esRetiro ? ' Te avisamos cuando esté listo para retirar.' : ''}
         </p>
         <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${totalAPagar}</p>
+      </div>
+
+      {/* Ingreso con Google: hace falta para usar cupones */}
+      <div style={{ marginTop: '16px' }}>
+        {!usuario ? (
+          <div
+            style={{
+              padding: '14px',
+              border: '1px solid #E4DCCF',
+              backgroundColor: '#FAF6F0',
+              borderRadius: '8px',
+            }}
+          >
+            <p style={{ margin: '0 0 10px', fontSize: '14px', color: '#2E2A26' }}>
+              🎁 Ingresá con Google para usar cupones y llevarte <strong>5% de descuento en tu primera compra</strong>.
+              Podés comprar sin cuenta, pero sin cupón.
+            </p>
+            <BotonGoogle />
+            <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#8A8378' }}>
+              Al ingresar aceptás recibir novedades por email. Podés darte de baja cuando quieras.
+            </p>
+          </div>
+        ) : (
+          <p style={{ margin: 0, fontSize: '13px', color: '#555' }}>
+            Ingresaste como <strong>{usuario.email}</strong> ·{' '}
+            <button
+              type="button"
+              onClick={cerrarSesion}
+              style={{ border: 'none', background: 'none', color: '#2F6B63', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+            >
+              Salir
+            </button>
+          </p>
+        )}
       </div>
 
       <div style={{ marginTop: '16px' }}>
@@ -325,6 +382,11 @@ export default function Checkout() {
           </div>
         )}
         {mensajeCupon && <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#b91c1c' }}>{mensajeCupon}</p>}
+        {cuponPideLogin && !usuario && (
+          <div style={{ marginTop: '10px' }}>
+            <BotonGoogle texto="Ingresar con Google para usar el cupón" />
+          </div>
+        )}
       </div>
 
       <SelectorEnvio codigoPostal={datos.codigoPostal} />
@@ -413,7 +475,8 @@ export default function Checkout() {
               <span style={{ color: '#15803d', fontWeight: 'bold' }}>{porcentajeDescuento}% de descuento</span>
               <br />
               <small style={{ color: '#666' }}>
-                Ahorrás ${montoDescuento}. Te mostramos los datos al terminar el pedido.
+                Ahorrás ${montoTransferencia}. Te mostramos los datos al terminar el pedido.
+                {hayCupon && ' No se suma al cupón: se aplica el descuento mayor.'}
               </small>
             </span>
           </label>

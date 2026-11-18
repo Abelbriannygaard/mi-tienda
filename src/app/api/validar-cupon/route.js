@@ -1,13 +1,20 @@
-// Archivo: src/app/api/validar-cupon/route.js
+// DESTINO: src/app/api/validar-cupon/route.js  (reemplaza el archivo actual)
 import { NextResponse } from 'next/server'
-import { buscarCuponValido } from '@/lib/cupones'
+import { buscarCuponValido, usuarioDesdeRequest, MENSAJE_LOGIN } from '@/lib/cupones'
 
-// Solo confirma que el cupón existe y está vigente, y devuelve lo mínimo para mostrar el descuento.
-// El descuento definitivo siempre se vuelve a calcular en el servidor al crear el pedido.
+// Confirma que el cupón existe, está vigente y que esta cuenta todavía no lo usó,
+// y devuelve lo mínimo para mostrar el descuento.
+// Hay que haber ingresado con Google. El descuento definitivo siempre se vuelve a calcular
+// en el servidor al crear el pedido.
 export async function POST(request) {
   try {
+    const usuario = await usuarioDesdeRequest(request)
+    if (!usuario) {
+      return NextResponse.json({ error: MENSAJE_LOGIN, login_requerido: true }, { status: 401 })
+    }
+
     const { codigo } = await request.json()
-    const resultado = await buscarCuponValido(codigo)
+    const resultado = await buscarCuponValido(codigo, usuario.id)
 
     if (!resultado.ok) {
       return NextResponse.json({ error: resultado.error }, { status: 400 })

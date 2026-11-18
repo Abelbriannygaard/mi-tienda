@@ -1,9 +1,20 @@
+// DESTINO: src/app/api/crear-pedido-transferencia/route.js  (reemplaza el archivo actual)
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
 import { nombreLineaCupon } from '@/lib/configCupones'
-import { validarCuponParaPedido, usarCupon, devolverUsoCupon } from '@/lib/cupones'
+import {
+  validarCuponParaPedido,
+  usarCupon,
+  devolverUsoCupon,
+  usuarioDesdeRequest,
+  reservarUsoCuenta,
+  liberarUsoCuenta,
+  vincularUsoConPedido,
+  MENSAJE_LOGIN,
+  MENSAJE_YA_USADO,
+} from '@/lib/cupones'
 import {
   enviarEmailInstruccionesTransferencia,
   enviarEmailNotificacionTransferencia,
@@ -33,8 +44,20 @@ async function verificarRecaptcha(token) {
 }
 
 export async function POST(request) {
-  // Si el pedido no se llega a guardar, se devuelve el uso del cupón que se había reservado
+  // Si el pedido no se llega a guardar, se devuelven los usos que se habían reservado
   let cuponReservado = null
+  let usoCuentaReservado = null // { userId, codigo }
+
+  async function deshacerReservas() {
+    if (cuponReservado) {
+      await devolverUsoCupon(cuponReservado)
+      cuponReservado = null
+    }
+    if (usoCuentaReservado) {
+      await liberarUsoCuenta(usoCuentaReservado.userId, usoCuentaReservado.codigo)
+      usoCuentaReservado = null
+    }
+  }
 
   try {
     const { items, zonaEnvio, datosCliente, recaptchaToken, cuponCodigo } = await request.json()
@@ -74,33 +97,61 @@ export async function POST(request) {
 
     const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
 
-    // Cupón: se valida y se calcula acá, nunca se confía en el descuento que manda el navegador
+    // Los descuentos NO se acumulan: se aplica solo el más alto.
+    // Si empatan (ej. 5% de cupón y 5% de transferencia) queda el de transferencia
+    // y el cupón no se gasta.
+    const descuentoTransferenciaPosible = Math.round(subtotal * DESCUENTO_TRANSFERENCIA)
+
     let cupon = null
     let descuentoCupon = 0
 
     if (cuponCodigo) {
-      const validacion = await validarCuponParaPedido(cuponCodigo, subtotal)
+      // Para usar un cupón hay que haber ingresado con Google
+      const usuario = await usuarioDesdeRequest(request)
+      if (!usuario) {
+        return NextResponse.json(
+          { error: MENSAJE_LOGIN, cupon_invalido: true, login_requerido: true },
+          { status: 401 }
+        )
+      }
+
+      // El cupón se valida y se calcula acá, nunca se confía en el descuento que manda el navegador
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotal, usuario.id)
       if (!validacion.ok) {
         return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
       }
 
-      const reservado = await usarCupon(validacion.cupon.codigo)
-      if (!reservado) {
-        return NextResponse.json(
-          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
-          { status: 400 }
-        )
-      }
+      if (validacion.descuento > descuentoTransferenciaPosible) {
+        const reservado = await usarCupon(validacion.cupon.codigo)
+        if (!reservado) {
+          return NextResponse.json(
+            { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+            { status: 400 }
+          )
+        }
+        cuponReservado = validacion.cupon.codigo
 
-      cuponReservado = validacion.cupon.codigo
-      cupon = validacion.cupon
-      descuentoCupon = validacion.descuento
+        const uso = await reservarUsoCuenta(usuario.id, validacion.cupon.codigo)
+        if (uso !== 'ok') {
+          await deshacerReservas()
+          return NextResponse.json(
+            {
+              error: uso === 'ya_usado' ? MENSAJE_YA_USADO : 'No pudimos verificar el cupón. Probá de nuevo.',
+              cupon_invalido: true,
+            },
+            { status: 400 }
+          )
+        }
+        usoCuentaReservado = { userId: usuario.id, codigo: validacion.cupon.codigo }
+
+        cupon = validacion.cupon
+        descuentoCupon = validacion.descuento
+      }
     }
 
-    // Orden de los descuentos: primero el cupón, después el de transferencia sobre el precio ya con cupón.
-    // El envío gratis se mide sobre el subtotal ya con cupón.
+    // Se aplica uno solo: el cupón (si ganó) o el de transferencia
+    const descuento = cupon ? 0 : descuentoTransferenciaPosible
     const subtotalConCupon = subtotal - descuentoCupon
-    const descuento = Math.round(subtotalConCupon * DESCUENTO_TRANSFERENCIA)
     const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
     const total = subtotalConCupon - descuento + costoEnvio
 
@@ -166,12 +217,16 @@ export async function POST(request) {
 
     if (errorInsert) {
       console.error('Error al guardar el pedido por transferencia:', errorInsert)
-      if (cuponReservado) await devolverUsoCupon(cuponReservado)
+      await deshacerReservas()
       return NextResponse.json({ error: 'No se pudo guardar el pedido. Probá de nuevo.' }, { status: 500 })
     }
 
-    // El pedido ya está guardado: el uso del cupón queda firme aunque falle algo después (por ejemplo un email)
+    // El pedido ya está guardado: los usos del cupón quedan firmes aunque falle algo después (por ejemplo un email)
+    if (usoCuentaReservado) {
+      await vincularUsoConPedido(usoCuentaReservado.userId, usoCuentaReservado.codigo, pedido.id)
+    }
     cuponReservado = null
+    usoCuentaReservado = null
 
     const pedidoParaEmail = {
       id: pedido.id,
@@ -193,7 +248,7 @@ export async function POST(request) {
     return NextResponse.json({ pedido_id: pedido.id, total, descuento })
   } catch (error) {
     console.error('Error al crear pedido por transferencia:', error)
-    if (cuponReservado) await devolverUsoCupon(cuponReservado)
+    await deshacerReservas()
     return NextResponse.json({ error: 'Error al crear el pedido' }, { status: 500 })
   }
 }

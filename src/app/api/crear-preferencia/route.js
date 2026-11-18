@@ -1,3 +1,4 @@
+// DESTINO: src/app/api/crear-preferencia/route.js  (reemplaza el archivo actual)
 import { MercadoPagoConfig, Preference } from 'mercadopago'
 import { NextResponse } from 'next/server'
 import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
@@ -6,6 +7,8 @@ import {
   usarCupon,
   devolverUsoCupon,
   repartirDescuentoEnItems,
+  usuarioDesdeRequest,
+  MENSAJE_LOGIN,
 } from '@/lib/cupones'
 
 const client = new MercadoPagoConfig({
@@ -49,12 +52,22 @@ export async function POST(request) {
 
     const subtotalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
 
-    // Cupón: se valida y se calcula acá, nunca se confía en el descuento que manda el navegador
+    // Cupón: se valida y se calcula acá, nunca se confía en el descuento que manda el navegador.
+    // Para usar un cupón hay que haber ingresado con Google.
     let cupon = null
     let descuentoCupon = 0
+    let usuario = null
 
     if (cuponCodigo) {
-      const validacion = await validarCuponParaPedido(cuponCodigo, subtotalProductos)
+      usuario = await usuarioDesdeRequest(request)
+      if (!usuario) {
+        return NextResponse.json(
+          { error: MENSAJE_LOGIN, cupon_invalido: true, login_requerido: true },
+          { status: 401 }
+        )
+      }
+
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotalProductos, usuario.id)
       if (!validacion.ok) {
         return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
       }
@@ -134,6 +147,8 @@ export async function POST(request) {
           zona_envio: zonaEnvio ? { ...zonaEnvio, costo: costoEnvio } : null,
           items_originales: itemsOriginales,
           cupon: cupon ? { codigo: cupon.codigo, descuento: descuentoCupon } : null,
+          // Quién usó el cupón: al aprobarse el pago, el webhook lo anota en esa cuenta
+          usuario_id: usuario ? usuario.id : null,
         },
         back_urls: {
           success: 'https://www.dimedetiambos.com.ar/pago-exitoso',
