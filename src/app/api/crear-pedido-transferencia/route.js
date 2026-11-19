@@ -239,7 +239,7 @@ export async function POST(request) {
     await enviarEmailInstruccionesTransferencia(pedidoParaEmail)
     await enviarEmailNotificacionTransferencia(pedidoParaEmail)
 
-    return NextResponse.json({ pedido_id: pedido.id, total, descuento })
+    return NextResponse.json({ pedido_id: pedido.id, total, descuento, descuento_cupon: descuentoCupon })
   } catch (error) {
     console.error('Error al crear pedido por transferencia:', error)
     await deshacerReservas()
