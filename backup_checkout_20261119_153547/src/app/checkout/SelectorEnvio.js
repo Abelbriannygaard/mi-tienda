@@ -1,0 +1,389 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useCarrito } from '@/lib/carrito'
+import {
+  ID_ENVIO_GRATIS_AUTO,
+  NOMBRE_ENVIO_GRATIS,
+  elegirOpcionEnvioGratis,
+} from '@/lib/configEnvioGratis'
+import { textoConfeccion } from '@/lib/configConfeccion'
+
+// Opción de entrega sin envío. El checkout reconoce este nombre y no pide la dirección.
+const RETIRO_EN_PERSONA = {
+  id: 'retiro-en-persona',
+  nombre: 'Retiro en persona',
+  costo: 0,
+  envioCarrier: null,
+  envioServiceCode: null,
+  envioBranchCode: null,
+}
+
+function rango(min, max) {
+  return min === max ? `${min}` : `${min} a ${max}`
+}
+
+// Plazos por separado: total, confección (de configConfeccion.js) y envío (según la zona, los define la cotización)
+function TiemposEntrega({ opcion }) {
+  if (!opcion) return null
+
+  return (
+    <div style={{ marginTop: '4px', marginLeft: '24px', fontSize: '12px', color: '#666', lineHeight: 1.6 }}>
+      <div style={{ color: '#333', fontWeight: 600 }}>
+        Llega en aprox. {rango(opcion.diasTotalMin, opcion.diasTotalMax)} días
+      </div>
+      <div>🧵 Confección: {textoConfeccion()}</div>
+      <div>🚚 Envío: {opcion.envioTexto}</div>
+    </div>
+  )
+}
+
+export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
+  const [cpInput, setCpInput] = useState('')
+  const [opcionesEnvia, setOpcionesEnvia] = useState([])
+  const [cargando, setCargando] = useState(false)
+  const [errorCotizacion, setErrorCotizacion] = useState(null)
+  
+  const { items, zonaEnvio, setZonaEnvio, envioGratis } = useCarrito()
+
+  const retiroSeleccionado = zonaEnvio?.id === RETIRO_EN_PERSONA.id
+
+  // En el checkout se le pasa el código postal del formulario; en el panel del carrito no
+  const dentroDelCheckout = cpDireccion !== undefined
+
+  // Sincronizar si el usuario cambia el CP en el formulario principal
+  useEffect(() => {
+    if (cpDireccion && cpDireccion !== cpInput) {
+      setCpInput(cpDireccion)
+    }
+  }, [cpDireccion])
+
+  // Función para consultar la cotización a Envia.com
+  const cotizar = async (cp) => {
+    if (!cp || String(cp).trim().length < 4) {
+      setErrorCotizacion('Ingresá un Código Postal válido (4 dígitos).')
+      setOpcionesEnvia([])
+      return
+    }
+
+    setCargando(true)
+    setErrorCotizacion(null)
+
+    try {
+      const res = await fetch('/api/envios/cotizar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postalCode: String(cp).trim(),
+          items: items,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.success && data.rates?.length > 0) {
+        setOpcionesEnvia(data.rates)
+        setErrorCotizacion(null)
+      } else {
+        setErrorCotizacion('No se encontraron opciones de envío para este Código Postal.')
+        setOpcionesEnvia([])
+      }
+    } catch (err) {
+      setErrorCotizacion('Error al calcular el envío. Intentalo de nuevo.')
+      setOpcionesEnvia([])
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  // Cotizar automáticamente si el CP tiene 4 dígitos
+  useEffect(() => {
+    if (cpInput.trim().length >= 4) {
+      const timer = setTimeout(() => cotizar(cpInput), 500)
+      return () => clearTimeout(timer)
+    }
+  }, [cpInput, items])
+
+  // ---------- Envío gratis: la empresa se elige sola, el cliente no ve opciones ----------
+
+  // Si el carrito baja del monto, se descarta la elección automática
+  useEffect(() => {
+    if (!envioGratis && zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO) setZonaEnvio(null)
+  }, [envioGratis, zonaEnvio])
+
+  // Con las tarifas cotizadas para su código postal, se elige la empresa (Urbano, si no OCA, a domicilio)
+  useEffect(() => {
+    if (!envioGratis || retiroSeleccionado || opcionesEnvia.length === 0) return
+    const elegida = elegirOpcionEnvioGratis(opcionesEnvia)
+    if (!elegida) return
+
+    const yaEstaElegida =
+      zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO &&
+      zonaEnvio.envioCarrier === elegida.carrierSlug &&
+      zonaEnvio.envioServiceCode === elegida.serviceCode
+    if (yaEstaElegida) return
+
+    setZonaEnvio({
+      id: ID_ENVIO_GRATIS_AUTO,
+      nombre: NOMBRE_ENVIO_GRATIS,
+      costo: 0,
+      envioCarrier: elegida.carrierSlug,
+      envioServiceCode: elegida.serviceCode,
+      envioBranchCode: elegida.branches?.[0]?.branchCode || null,
+    })
+  }, [envioGratis, retiroSeleccionado, opcionesEnvia, zonaEnvio])
+
+  // Si el nuevo código postal no tiene cobertura, se descarta la elección anterior
+  useEffect(() => {
+    if (envioGratis && errorCotizacion && zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO) setZonaEnvio(null)
+  }, [envioGratis, errorCotizacion, zonaEnvio])
+
+  if (envioGratis) {
+    const aDomicilioSeleccionado = !retiroSeleccionado
+    const confirmado = zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO
+
+    // La opción que quedó elegida sola, para mostrar sus plazos
+    const opcionConfirmada = confirmado
+      ? opcionesEnvia.find(
+          (o) => o.carrierSlug === zonaEnvio.envioCarrier && o.serviceCode === zonaEnvio.envioServiceCode
+        )
+      : null
+
+    let estado = null
+    if (aDomicilioSeleccionado) {
+      if (cargando) {
+        estado = <span style={{ color: '#009ee3' }}>⏳ Confirmando tu envío...</span>
+      } else if (confirmado) {
+        estado = <span style={{ color: '#15803d' }}>✅ Envío confirmado</span>
+      } else if (errorCotizacion) {
+        estado = <span style={{ color: '#d9534f' }}>{errorCotizacion}</span>
+      } else if (dentroDelCheckout) {
+        estado = <span>Completá tu código postal más abajo para confirmar el envío.</span>
+      } else {
+        estado = <span>Confirmás tu código postal al finalizar la compra.</span>
+      }
+    }
+
+    return (
+      <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', marginTop: '15px', backgroundColor: '#fafafa' }}>
+        <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
+          ¿Cómo querés recibir tu pedido?
+        </p>
+
+        <label
+          style={{
+            display: 'block',
+            padding: '12px',
+            border: aDomicilioSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+            borderRadius: '6px',
+            marginBottom: '10px',
+            cursor: 'pointer',
+            backgroundColor: aDomicilioSeleccionado ? '#f0f8ff' : '#fff',
+          }}
+        >
+          <input
+            type="radio"
+            name="zonaEnvio"
+            checked={aDomicilioSeleccionado}
+            onChange={() => setZonaEnvio(null)}
+            style={{ marginRight: '10px' }}
+          />
+          <strong>Envío a domicilio</strong> — <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
+          {estado && (
+            <small style={{ display: 'block', marginLeft: '24px', marginTop: '4px', color: '#666' }}>{estado}</small>
+          )}
+          {aDomicilioSeleccionado && !cargando && <TiemposEntrega opcion={opcionConfirmada} />}
+        </label>
+
+        <label
+          style={{
+            display: 'block',
+            padding: '12px',
+            border: retiroSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            backgroundColor: retiroSeleccionado ? '#f0f8ff' : '#fff',
+          }}
+        >
+          <input
+            type="radio"
+            name="zonaEnvio"
+            checked={retiroSeleccionado}
+            onChange={() => setZonaEnvio({ ...RETIRO_EN_PERSONA })}
+            style={{ marginRight: '10px' }}
+          />
+          <strong>Retiro en persona</strong> — Gratis
+          <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
+            Te avisamos cuando esté listo y coordinamos el retiro.
+          </small>
+        </label>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', marginTop: '15px', backgroundColor: '#fafafa' }}>
+      {/* Retiro en persona: no necesita Código Postal ni cotización */}
+      <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
+        ¿Cómo querés recibir tu pedido?
+      </p>
+
+      <label
+        style={{
+          display: 'block',
+          padding: '12px',
+          border: retiroSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+          borderRadius: '6px',
+          marginBottom: '16px',
+          cursor: 'pointer',
+          backgroundColor: retiroSeleccionado ? '#f0f8ff' : '#fff',
+        }}
+      >
+        <input
+          type="radio"
+          name="zonaEnvio"
+          checked={retiroSeleccionado}
+          onChange={() => setZonaEnvio({ ...RETIRO_EN_PERSONA })}
+          style={{ marginRight: '10px' }}
+        />
+        <strong>Retiro en persona</strong> — Gratis
+        <br />
+        <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
+          Te avisamos cuando esté listo y coordinamos el retiro.
+        </small>
+      </label>
+
+      <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
+        O calcular el costo de envío a domicilio:
+      </p>
+
+      {/* Casilla para que el usuario escriba o modifique su Código Postal */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+        <input
+          type="text"
+          placeholder="Ej: 1650"
+          value={cpInput}
+          onChange={(e) => setCpInput(e.target.value)}
+          maxLength={5}
+          style={{
+            padding: '8px 12px',
+            border: '1px solid #ccc',
+            borderRadius: '6px',
+            width: '120px',
+            fontSize: '14px',
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => cotizar(cpInput)}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#009ee3',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+          }}
+        >
+          {cargando ? 'Buscando...' : 'Calcular'}
+        </button>
+      </div>
+
+      {/* Estado de carga */}
+      {cargando && (
+        <p style={{ color: '#009ee3', fontSize: '14px', fontWeight: 'bold' }}>
+          ⏳ Consultando tarifas de Correo Argentino...
+        </p>
+      )}
+
+      {/* Error si no encuentra tarifas */}
+      {errorCotizacion && !cargando && (
+        <p style={{ color: '#d9534f', fontSize: '13px', margin: 0 }}>
+          {errorCotizacion}
+        </p>
+      )}
+
+      {/* Lista de opciones devueltas por Correo Argentino */}
+      {opcionesEnvia.length > 0 && (
+        <div style={{ marginTop: '10px' }}>
+          <p style={{ fontSize: '13px', color: '#555', marginBottom: '8px' }}>
+            Opciones disponibles para CP <strong>{cpInput}</strong>:
+          </p>
+
+          {opcionesEnvia.map((opcion) => {
+            const idUnico = `envia-${opcion.id}`
+            const estaSeleccionado = zonaEnvio?.id === idUnico
+
+            return (
+              <label
+                key={idUnico}
+                style={{
+                  display: 'block',
+                  padding: '12px',
+                  border: estaSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  marginBottom: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: estaSeleccionado ? '#f0f8ff' : '#fff',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="zonaEnvio"
+                  checked={estaSeleccionado}
+                  onChange={() =>
+                    setZonaEnvio({
+                      id: idUnico,
+                      nombre: `${opcion.carrier} - ${opcion.service}`,
+                      costo: opcion.price,
+                      envioCarrier: opcion.carrierSlug,
+                      envioServiceCode: opcion.serviceCode,
+                      envioBranchCode: opcion.branches?.[0]?.branchCode || null,
+                    })
+                  }
+                  style={{ marginRight: '10px' }}
+                />
+                <strong>{opcion.service}</strong> —{' '}
+                {envioGratis ? (
+                  <>
+                    <s style={{ color: '#999' }}>${opcion.price}</s>{' '}
+                    <span style={{ color: '#15803d', fontWeight: 'bold' }}>¡Gratis!</span>
+                  </>
+                ) : (
+                  `$${opcion.price}`
+                )}
+
+                <TiemposEntrega opcion={opcion} />
+
+                {estaSeleccionado && opcion.branches?.length > 0 && (
+                  <div style={{ marginTop: '10px', marginLeft: '24px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>
+                      Elegí la sucursal:
+                    </label>
+                    <select
+                      value={zonaEnvio?.envioBranchCode || ''}
+                      onChange={(e) =>
+                        setZonaEnvio({
+                          ...zonaEnvio,
+                          envioBranchCode: e.target.value,
+                        })
+                      }
+                      style={{ padding: '6px', borderRadius: '6px', border: '1px solid #ccc', width: '100%' }}
+                    >
+                      {opcion.branches.map((b) => (
+                        <option key={b.branchCode} value={b.branchCode}>
+                          {b.direccion}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

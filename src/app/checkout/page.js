@@ -1,529 +1,248 @@
-// DESTINO: src/app/checkout/page.js  (reemplaza el archivo actual)
-'use client'
-
-import Script from 'next/script'
-
-import { useState, useEffect, useRef } from 'react'
-import { useCarrito } from '@/lib/carrito'
-import { useRouter } from 'next/navigation'
-import SelectorEnvio from './SelectorEnvio'
-import BrandBrickMP from './BrandBrickMP'
-import BotonGoogle from '../BotonGoogle'
+// DESTINO: src/app/api/crear-pedido-transferencia/route.js  (reemplaza el archivo actual)
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
-import { textoConfeccion } from '@/lib/configConfeccion'
-import { ID_ENVIO_GRATIS_AUTO, UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
-import { etiquetaDescuento } from '@/lib/configCupones'
-import { track } from '@/lib/fbq'
+import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import { nombreLineaCupon } from '@/lib/configCupones'
+import {
+  validarCuponParaPedido,
+  usarCupon,
+  devolverUsoCupon,
+  usuarioDesdeRequest,
+  reservarUsoCuenta,
+  liberarUsoCuenta,
+  vincularUsoConPedido,
+  MENSAJE_LOGIN,
+  MENSAJE_YA_USADO,
+} from '@/lib/cupones'
+import {
+  enviarEmailInstruccionesTransferencia,
+  enviarEmailNotificacionTransferencia,
+} from '@/lib/enviarEmails'
 
-export default function Checkout() {
-  const {
-    items,
-    totalProductos,
-    envioGratis,
-    zonaEnvio,
-    cupon,
-    cuponAplica,
-    descuentoCupon,
-    aplicarCupon,
-    quitarCupon,
-    pagar,
-    vaciarCarrito,
-    usuario,
-    cerrarSesion,
-    cabecerasConSesion,
-  } = useCarrito()
-  const router = useRouter()
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
 
-  const [datos, setDatos] = useState({
-    nombre: '',
-    email: '',
-    dni: '',
-    telefono: '',
-    calle: '',
-    numero: '',
-    pisoDepto: '',
-    ciudad: '',
-    codigoPostal: '',
-    notas: '',
-  })
+async function verificarRecaptcha(token) {
+  if (!token) return false
 
-  const [enviando, setEnviando] = useState(false)
-  const [metodoPago, setMetodoPago] = useState('mercadopago')
-
-  // Campo de cupón
-  const [codigoCupon, setCodigoCupon] = useState('')
-  const [mensajeCupon, setMensajeCupon] = useState('')
-  const [aplicandoCupon, setAplicandoCupon] = useState(false)
-  const [cuponPideLogin, setCuponPideLogin] = useState(false)
-
-  // META PIXEL: InitiateCheckout (una sola vez). Los hooks van siempre antes de cualquier return.
-  const checkoutIniciado = useRef(false)
-
-  useEffect(() => {
-    if (checkoutIniciado.current || items.length === 0) return
-    checkoutIniciado.current = true
-    track('InitiateCheckout', {
-      value: totalProductos,
-      currency: 'ARS',
-      content_type: 'product',
-      num_items: items.reduce((a, i) => a + i.cantidad, 0),
-      contents: items.map((i) => ({
-        id: String(i.id),
-        quantity: i.cantidad,
-        item_price: i.precio,
-      })),
+  try {
+    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${token}`,
     })
-  }, [items, totalProductos])
 
-  const esRetiro = zonaEnvio?.nombre === 'Retiro en persona'
-  const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
-  const conTransferencia = metodoPago === 'transferencia'
+    const data = await res.json()
+    return data.success && data.score >= 0.5 && data.action === 'checkout'
+  } catch (error) {
+    console.error('Error al verificar reCAPTCHA:', error)
+    return false
+  }
+}
 
-  // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
-  // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
-  const hayCupon = cuponAplica && descuentoCupon > 0
-  const cuponEnUso = hayCupon
-  const descuentoCuponEfectivo = cuponEnUso ? descuentoCupon : 0
-  const subtotalEfectivo = totalProductos - descuentoCuponEfectivo
+export async function POST(request) {
+  // Si el pedido no se llega a guardar, se devuelven los usos que se habían reservado
+  let cuponReservado = null
+  let usoCuentaReservado = null // { userId, codigo }
 
-  const montoTransferencia = Math.round(subtotalEfectivo * DESCUENTO_TRANSFERENCIA)
-  const transferenciaGana = conTransferencia
-  const descuentoTransferenciaEfectivo = conTransferencia ? montoTransferencia : 0
-  const envioGratisEfectivo = subtotalEfectivo >= UMBRAL_ENVIO_GRATIS
-  const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - subtotalEfectivo)
-  const costoEnvioEfectivo = calcularCostoEnvio(subtotalEfectivo, zonaEnvio)
-  const totalAPagar = subtotalEfectivo - descuentoTransferenciaEfectivo + costoEnvioEfectivo
-
-  function handleChange(e) {
-    setDatos({ ...datos, [e.target.name]: e.target.value })
+  async function deshacerReservas() {
+    if (cuponReservado) {
+      await devolverUsoCupon(cuponReservado)
+      cuponReservado = null
+    }
+    if (usoCuentaReservado) {
+      await liberarUsoCuenta(usoCuentaReservado.userId, usoCuentaReservado.codigo)
+      usoCuentaReservado = null
+    }
   }
 
-  async function handleAplicarCupon() {
-    setMensajeCupon('')
-    setCuponPideLogin(false)
-    setAplicandoCupon(true)
-    const resultado = await aplicarCupon(codigoCupon)
-    setAplicandoCupon(false)
+  try {
+    const { items, zonaEnvio, datosCliente, recaptchaToken, cuponCodigo } = await request.json()
 
-    if (!resultado.ok) {
-      setMensajeCupon(resultado.error)
-      if (resultado.loginRequerido) setCuponPideLogin(true)
-      return
+    const recaptchaValido = await verificarRecaptcha(recaptchaToken)
+    if (!recaptchaValido) {
+      return NextResponse.json(
+        { error: 'No pudimos verificar que sos una persona real. Recargá la página e intentá de nuevo.' },
+        { status: 400 }
+      )
     }
-    setCodigoCupon('')
-  }
 
-  function validar() {
-    if (cupon && !usuario) {
-      return 'Para usar el cupón ingresá con Google (o quitá el cupón para seguir sin cuenta).'
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'Tu carrito está vacío' }, { status: 400 })
     }
-    if (!datos.nombre.trim()) return 'Ingresá tu nombre completo'
-    if (!datos.email.trim()) return 'Ingresá tu email'
-    if (!datos.dni.trim()) return 'Ingresá tu DNI'
-    if (!datos.telefono.trim()) return 'Ingresá tu teléfono'
-    if (envioGratis && !esRetiro) {
-      // Con envío gratis la empresa se elige sola al cargar el código postal
-      if (zonaEnvio?.id !== ID_ENVIO_GRATIS_AUTO) {
-        return 'Todavía no pudimos confirmar tu envío gratis. Revisá tu código postal.'
+    if (!zonaEnvio) {
+      return NextResponse.json({ error: 'Elegí una zona de envío' }, { status: 400 })
+    }
+    if (!datosCliente?.nombre || !datosCliente?.email) {
+      return NextResponse.json({ error: 'Faltan tus datos de contacto' }, { status: 400 })
+    }
+
+    // Mismo criterio que crear-preferencia: se toman nombre y precio del carrito.
+    // Se limpian cantidad y precio para que no entren valores raros.
+    const itemsPedido = items.map((item) => {
+      const cantidad = Math.max(1, parseInt(item.cantidad, 10) || 1)
+      const precio = Math.max(0, Number(item.precio) || 0)
+      const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null].filter(Boolean).join(' - ')
+
+      return {
+        nombre: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+        cantidad,
+        precio,
+        imagen_url: item.imagen_url || null,
       }
-    } else if (!zonaEnvio) {
-      return 'Elegí una zona de envío'
-    }
-    if (!esRetiro) {
-      if (!datos.calle.trim() || !datos.numero.trim() || !datos.ciudad.trim() || !datos.codigoPostal.trim()) {
-        return 'Completá la dirección de envío completa'
-      }
-    }
-    return null
-  }
+    })
 
-  async function handleSubmit(e) {
-    e.preventDefault()
+    const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
 
-    if (items.length === 0) {
-      alert('Tu carrito está vacío')
-      return
-    }
+    // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
+    // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
+    let cupon = null
+    let descuentoCupon = 0
 
-    const error = validar()
-    if (error) {
-      alert(error)
-      return
-    }
-
-    setEnviando(true)
-    try {
-      const token = await new Promise((resolve, reject) => {
-        window.grecaptcha.ready(() => {
-          window.grecaptcha
-            .execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'checkout' })
-            .then(resolve)
-            .catch(reject)
-        })
-      })
-
-      if (conTransferencia) {
-        const res = await fetch('/api/crear-pedido-transferencia', {
-          method: 'POST',
-          headers: await cabecerasConSesion(),
-          body: JSON.stringify({
-            items,
-            zonaEnvio,
-            datosCliente: datos,
-            recaptchaToken: token,
-            cuponCodigo: cupon?.codigo || null,
-          }),
-        })
-        const data = await res.json()
-
-        if (!res.ok) {
-          // Si el cupón ya no sirve (venció, se agotó o ya lo usaste), se saca para que el cliente vea el precio real
-          if (data.cupon_invalido) quitarCupon()
-          alert(data.error || 'Hubo un error al procesar tu pedido. Probá de nuevo.')
-          setEnviando(false)
-          return
-        }
-
-        // La pantalla siguiente lee estos datos para mostrar el monto y el número de pedido
-        sessionStorage.setItem(
-          'pedido_transferencia',
-          JSON.stringify({ id: data.pedido_id, total: data.total, descuento: data.descuento })
+    if (cuponCodigo) {
+      // Para usar un cupón hay que haber ingresado con Google
+      const usuario = await usuarioDesdeRequest(request)
+      if (!usuario) {
+        return NextResponse.json(
+          { error: MENSAJE_LOGIN, cupon_invalido: true, login_requerido: true },
+          { status: 401 }
         )
+      }
 
-        // META PIXEL: Purchase por transferencia
-        track(
-          'Purchase',
+      // El cupón se valida y se calcula acá, nunca se confía en el descuento que manda el navegador
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotal, usuario.id)
+      if (!validacion.ok) {
+        return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
+      }
+
+      const reservado = await usarCupon(validacion.cupon.codigo)
+      if (!reservado) {
+        return NextResponse.json(
+          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+      cuponReservado = validacion.cupon.codigo
+
+      const uso = await reservarUsoCuenta(usuario.id, validacion.cupon.codigo)
+      if (uso !== 'ok') {
+        await deshacerReservas()
+        return NextResponse.json(
           {
-            value: Number(data.total),
-            currency: 'ARS',
-            content_type: 'product',
-            num_items: items.reduce((a, i) => a + i.cantidad, 0),
-            contents: items.map((i) => ({
-              id: String(i.id),
-              quantity: i.cantidad,
-              item_price: i.precio,
-            })),
+            error: uso === 'ya_usado' ? MENSAJE_YA_USADO : 'No pudimos verificar el cupón. Probá de nuevo.',
+            cupon_invalido: true,
           },
-          `purchase_${data.pedido_id}`
+          { status: 400 }
         )
-
-        vaciarCarrito()
-        router.push('/pago-transferencia')
-        return
       }
+      usoCuentaReservado = { userId: usuario.id, codigo: validacion.cupon.codigo }
 
-      await pagar(datos, token)
-    } catch (err) {
-      if (err?.cuponInvalido) {
-        quitarCupon()
-        alert(err.message)
-      } else {
-        alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
-      }
-      setEnviando(false)
+      cupon = validacion.cupon
+      descuentoCupon = validacion.descuento
     }
-  }
 
-  if (items.length === 0) {
-    return (
-      <main style={{ padding: '40px', textAlign: 'center' }}>
-        <h1>Tu carrito está vacío</h1>
-        <button onClick={() => router.push('/')} style={{ marginTop: '20px', padding: '10px 20px', cursor: 'pointer' }}>
-          Volver a la tienda
-        </button>
-      </main>
-    )
-  }
+    const subtotalConCupon = subtotal - descuentoCupon
+    const descuento = Math.round(subtotalConCupon * DESCUENTO_TRANSFERENCIA)
+    const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
+    const total = subtotalConCupon - descuento + costoEnvio
 
-  return (
-    <main style={{ padding: 'clamp(16px, 5vw, 40px)', maxWidth: '600px', margin: '0 auto' }}>
-      <Script src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`} />
-      <h1>Finalizar compra</h1>
-      <div style={{ backgroundColor: '#f7f7f7', padding: '16px', borderRadius: '8px', marginTop: '20px' }}>
-        <h3>Resumen del pedido</h3>
-        {items.map((item) => (
-          <p key={`${item.id}-${item.variante_id || ''}`}>
-            {item.nombre} {item.color ? `(${item.color})` : ''} x{item.cantidad} — ${item.precio * item.cantidad}
-          </p>
-        ))}
-        {cuponEnUso && (
-          <p style={{ color: '#15803d' }}>
-            Cupón {cupon.codigo} ({etiquetaDescuento(cupon)}): −${descuentoCuponEfectivo}
-          </p>
-        )}
-        {hayCupon && conTransferencia && (
-          <p style={{ fontSize: '14px', color: '#15803d' }}>
-            ¡Tu cupón {cupon.codigo} se suma al descuento por transferencia!
-          </p>
-        )}
-        {envioGratisEfectivo && !esRetiro ? (
-          <p>
-            Costo de envío: <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
-          </p>
-        ) : (
-          <p>
-            Envío ({zonaEnvio?.nombre || 'sin elegir'}): ${costoEnvioEfectivo}
-          </p>
-        )}
-        {!esRetiro && !envioGratisEfectivo && (
-          <p style={{ fontSize: '14px', color: '#15803d' }}>
-            🚚 Sumá ${faltaParaEnvioGratis} más en productos y el envío es gratis.
-          </p>
-        )}
-        {transferenciaGana && (
-          <p style={{ color: '#15803d' }}>
-            Descuento por transferencia ({porcentajeDescuento}%): −${descuentoTransferenciaEfectivo}
-          </p>
-        )}
-        <p style={{ fontSize: '14px', color: '#555' }}>
-          🧵 Tiempo de confección estimado: {textoConfeccion()}.
-          {esRetiro ? ' Te avisamos cuando esté listo para retirar.' : ''}
-        </p>
-        <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${totalAPagar}</p>
-      </div>
+    // Los descuentos quedan como líneas con precio negativo, así todo suma igual
+    // en el admin, en los emails y en la factura
+    if (descuentoCupon > 0) {
+      itemsPedido.push({
+        nombre: nombreLineaCupon(cupon),
+        cantidad: 1,
+        precio: -descuentoCupon,
+        imagen_url: null,
+      })
+    }
 
-      {/* Ingreso con Google: hace falta para usar cupones */}
-      <div style={{ marginTop: '16px' }}>
-        {!usuario ? (
-          <div
-            style={{
-              padding: '14px',
-              border: '1px solid #E4DCCF',
-              backgroundColor: '#FAF6F0',
-              borderRadius: '8px',
-            }}
-          >
-            <p style={{ margin: '0 0 10px', fontSize: '14px', color: '#2E2A26' }}>
-              🎁 Ingresá con Google para usar cupones y llevarte <strong>5% de descuento en tu primera compra</strong>.
-              Podés comprar sin cuenta, pero sin cupón.
-            </p>
-            <BotonGoogle />
-            <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#8A8378' }}>
-              Al ingresar aceptás recibir novedades por email. Podés darte de baja cuando quieras.
-            </p>
-          </div>
-        ) : (
-          <p style={{ margin: 0, fontSize: '13px', color: '#555' }}>
-            Ingresaste como <strong>{usuario.email}</strong> ·{' '}
-            <button
-              type="button"
-              onClick={cerrarSesion}
-              style={{ border: 'none', background: 'none', color: '#2F6B63', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
-            >
-              Salir
-            </button>
-          </p>
-        )}
-      </div>
+    if (descuento > 0) {
+      itemsPedido.push({
+        nombre: `Descuento por transferencia (${Math.round(DESCUENTO_TRANSFERENCIA * 100)}%)`,
+        cantidad: 1,
+        precio: -descuento,
+        imagen_url: null,
+      })
+    }
 
-      <div style={{ marginTop: '16px' }}>
-        {cupon ? (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '12px',
-              border: '1px solid #bbf7d0',
-              backgroundColor: '#f0fdf4',
-              borderRadius: '8px',
-            }}
-          >
-            <span style={{ fontSize: '14px', color: '#15803d' }}>
-              🎟️ Cupón <strong>{cupon.codigo}</strong> ({etiquetaDescuento(cupon)})
-              {!cuponAplica && (
-                <>
-                  <br />
-                  <small style={{ color: '#a16207' }}>
-                    Se aplica con una compra mínima de ${Number(cupon.compra_minima).toLocaleString('es-AR')} en productos.
-                  </small>
-                </>
-              )}
-            </span>
-            <button
-              type="button"
-              onClick={quitarCupon}
-              style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '6px', background: '#fff', cursor: 'pointer' }}
-            >
-              Quitar
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <input
-              value={codigoCupon}
-              onChange={(e) => setCodigoCupon(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  if (codigoCupon.trim() && !aplicandoCupon) handleAplicarCupon()
-                }
-              }}
-              placeholder="¿Tenés un cupón?"
-              autoCapitalize="characters"
-              style={{ ...inputStyle, marginTop: 0, flex: 1 }}
-            />
-            <button
-              type="button"
-              onClick={handleAplicarCupon}
-              disabled={aplicandoCupon || !codigoCupon.trim()}
-              style={{
-                padding: '0 18px',
-                border: 'none',
-                borderRadius: '6px',
-                color: 'white',
-                backgroundColor: aplicandoCupon || !codigoCupon.trim() ? '#ccc' : '#2F6B63',
-                cursor: aplicandoCupon || !codigoCupon.trim() ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {aplicandoCupon ? '...' : 'Aplicar'}
-            </button>
-          </div>
-        )}
-        {mensajeCupon && <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#b91c1c' }}>{mensajeCupon}</p>}
-        {cuponPideLogin && !usuario && (
-          <div style={{ marginTop: '10px' }}>
-            <BotonGoogle texto="Ingresar con Google para usar el cupón" />
-          </div>
-        )}
-      </div>
+    const direccion = datosCliente.calle
+      ? {
+          calle: datosCliente.calle,
+          numero: datosCliente.numero,
+          pisoDepto: datosCliente.pisoDepto || null,
+          ciudad: datosCliente.ciudad,
+          codigoPostal: datosCliente.codigoPostal || null,
+        }
+      : null
 
-      <SelectorEnvio codigoPostal={datos.codigoPostal} />
+    // La tabla identifica cada pedido por esta columna: se usa una referencia propia que arranca con TR-
+    const referencia =
+      'TR-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase()
 
-      <form onSubmit={handleSubmit} style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <label>
-          Nombre completo *
-          <input name="nombre" value={datos.nombre} onChange={handleChange} style={inputStyle} />
-        </label>
+    const { data: pedido, error: errorInsert } = await supabaseAdmin
+      .from('pedidos')
+      .insert({
+        mercadopago_payment_id: referencia,
+        estado: 'pending',
+        metodo_pago: 'transferencia',
+        descuento,
+        cupon_codigo: cupon ? cupon.codigo : null,
+        descuento_cupon: descuentoCupon,
+        total,
+        items: itemsPedido,
+        comprador_email: datosCliente.email || null,
+        cliente_nombre: datosCliente.nombre || null,
+        cliente_dni: datosCliente.dni || null,
+        cliente_telefono: datosCliente.telefono || null,
+        direccion,
+        zona_envio: zonaEnvio.nombre || null,
+        costo_envio: costoEnvio,
+        envio_carrier: zonaEnvio.envioCarrier || zonaEnvio.envio_carrier || null,
+        envio_service_code: zonaEnvio.envioServiceCode || zonaEnvio.envio_service_code || null,
+        envio_branch_code: zonaEnvio.envioBranchCode || zonaEnvio.envio_branch_code || null,
+        notas: datosCliente.notas || null,
+      })
+      .select('id')
+      .single()
 
-        <label>
-          Email *
-          <input name="email" type="email" value={datos.email} onChange={handleChange} style={inputStyle} />
-        </label>
+    if (errorInsert) {
+      console.error('Error al guardar el pedido por transferencia:', errorInsert)
+      await deshacerReservas()
+      return NextResponse.json({ error: 'No se pudo guardar el pedido. Probá de nuevo.' }, { status: 500 })
+    }
 
-        <label>
-          DNI *
-          <input name="dni" value={datos.dni} onChange={handleChange} style={inputStyle} />
-        </label>
+    // El pedido ya está guardado: los usos del cupón quedan firmes aunque falle algo después (por ejemplo un email)
+    if (usoCuentaReservado) {
+      await vincularUsoConPedido(usoCuentaReservado.userId, usoCuentaReservado.codigo, pedido.id)
+    }
+    cuponReservado = null
+    usoCuentaReservado = null
 
-        <label>
-          Teléfono *
-          <input name="telefono" value={datos.telefono} onChange={handleChange} style={inputStyle} />
-        </label>
+    const pedidoParaEmail = {
+      id: pedido.id,
+      cliente_nombre: datosCliente.nombre || null,
+      comprador_email: datosCliente.email || null,
+      cliente_telefono: datosCliente.telefono || null,
+      cliente_dni: datosCliente.dni || null,
+      items: itemsPedido,
+      total,
+      zona_envio: zonaEnvio.nombre || null,
+      costo_envio: costoEnvio,
+      direccion,
+      notas: datosCliente.notas || null,
+    }
 
-        {!esRetiro && (
-          <>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <label style={{ flex: 2, minWidth: '140px' }}>
-                Calle *
-                <input name="calle" value={datos.calle} onChange={handleChange} style={inputStyle} />
-              </label>
-              <label style={{ flex: 1, minWidth: '100px' }}>
-                Número *
-                <input name="numero" value={datos.numero} onChange={handleChange} style={inputStyle} />
-              </label>
-            </div>
-            <label>
-              Piso / Depto (opcional)
-              <input name="pisoDepto" value={datos.pisoDepto} onChange={handleChange} style={inputStyle} placeholder="Ej: 3° B" />
-            </label>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <label style={{ flex: 1, minWidth: '140px' }}>
-                Ciudad *
-                <input name="ciudad" value={datos.ciudad} onChange={handleChange} style={inputStyle} />
-              </label>
-              <label style={{ flex: 1, minWidth: '140px' }}>
-                Código Postal *
-                <input name="codigoPostal" value={datos.codigoPostal} onChange={handleChange} style={inputStyle} />
-              </label>
-            </div>
-          </>
-        )}
+    await enviarEmailInstruccionesTransferencia(pedidoParaEmail)
+    await enviarEmailNotificacionTransferencia(pedidoParaEmail)
 
-        <label>
-          Notas adicionales (opcional)
-          <textarea name="notas" value={datos.notas} onChange={handleChange} style={{ ...inputStyle, minHeight: '60px' }} />
-        </label>
-
-        <div style={{ marginTop: '8px' }}>
-          <p style={{ margin: '0 0 8px', fontWeight: 'bold' }}>Forma de pago</p>
-
-          <label style={opcionPagoStyle(metodoPago === 'mercadopago')}>
-            <input
-              type="radio"
-              name="metodoPago"
-              checked={metodoPago === 'mercadopago'}
-              onChange={() => setMetodoPago('mercadopago')}
-            />
-            <span>
-              <strong>Mercado Pago</strong>
-              <br />
-              <small style={{ color: '#666' }}>Tarjeta, dinero en cuenta, cuotas y más</small>
-            </span>
-          </label>
-
-          <label style={{ ...opcionPagoStyle(conTransferencia), marginTop: '8px' }}>
-            <input
-              type="radio"
-              name="metodoPago"
-              checked={conTransferencia}
-              onChange={() => setMetodoPago('transferencia')}
-            />
-            <span>
-              <strong>Transferencia bancaria</strong>{' '}
-              <span style={{ color: '#15803d', fontWeight: 'bold' }}>{porcentajeDescuento}% de descuento</span>
-              <br />
-              <small style={{ color: '#666' }}>
-                Ahorrás ${montoTransferencia}. Te mostramos los datos al terminar el pedido.
-                {hayCupon && ' Se suma a tu cupón.'}
-              </small>
-            </span>
-          </label>
-        </div>
-
-        {!conTransferencia && <BrandBrickMP />}
-
-        <button
-          type="submit"
-          disabled={enviando}
-          style={{
-            marginTop: '10px',
-            padding: '14px',
-            fontSize: '16px',
-            backgroundColor: enviando ? '#ccc' : conTransferencia ? '#2F6B63' : '#009ee3',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: enviando ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {enviando ? 'Procesando...' : conTransferencia ? 'Confirmar pedido' : 'Confirmar y pagar'}
-        </button>
-      </form>
-    </main>
-  )
-}
-
-const inputStyle = {
-  display: 'block',
-  width: '100%',
-  padding: '10px',
-  marginTop: '4px',
-  border: '1px solid #ccc',
-  borderRadius: '6px',
-  boxSizing: 'border-box',
-}
-
-function opcionPagoStyle(seleccionada) {
-  return {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '12px',
-    border: seleccionada ? '2px solid #2F6B63' : '1px solid #ccc',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    backgroundColor: seleccionada ? '#f0f7f5' : '#fff',
+    return NextResponse.json({ pedido_id: pedido.id, total, descuento, descuento_cupon: descuentoCupon })
+  } catch (error) {
+    console.error('Error al crear pedido por transferencia:', error)
+    await deshacerReservas()
+    return NextResponse.json({ error: 'Error al crear el pedido' }, { status: 500 })
   }
 }

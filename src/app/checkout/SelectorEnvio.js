@@ -152,7 +152,7 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
     let estado = null
     if (aDomicilioSeleccionado) {
       if (cargando) {
-        estado = <span style={{ color: '#009ee3' }}>⏳ Confirmando tu envío...</span>
+        estado = <span style={{ color: '#2F6B63' }}>⏳ Confirmando tu envío...</span>
       } else if (confirmado) {
         estado = <span style={{ color: '#15803d' }}>✅ Envío confirmado</span>
       } else if (errorCotizacion) {
@@ -165,7 +165,7 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
     }
 
     return (
-      <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', marginTop: '15px', backgroundColor: '#fafafa' }}>
+      <div style={{ padding: '16px', border: '1px solid #E4DCCF', borderRadius: '8px', marginTop: '15px', backgroundColor: '#FFFFFF' }}>
         <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
           ¿Cómo querés recibir tu pedido?
         </p>
@@ -174,11 +174,11 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
           style={{
             display: 'block',
             padding: '12px',
-            border: aDomicilioSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+            border: aDomicilioSeleccionado ? '2px solid #2F6B63' : '1px solid #e0e0e0',
             borderRadius: '6px',
             marginBottom: '10px',
             cursor: 'pointer',
-            backgroundColor: aDomicilioSeleccionado ? '#f0f8ff' : '#fff',
+            backgroundColor: aDomicilioSeleccionado ? '#F0F7F5' : '#fff',
           }}
         >
           <input
@@ -199,10 +199,10 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
           style={{
             display: 'block',
             padding: '12px',
-            border: retiroSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+            border: retiroSeleccionado ? '2px solid #2F6B63' : '1px solid #e0e0e0',
             borderRadius: '6px',
             cursor: 'pointer',
-            backgroundColor: retiroSeleccionado ? '#f0f8ff' : '#fff',
+            backgroundColor: retiroSeleccionado ? '#F0F7F5' : '#fff',
           }}
         >
           <input
@@ -222,7 +222,7 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
   }
 
   return (
-    <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', marginTop: '15px', backgroundColor: '#fafafa' }}>
+    <div style={{ padding: '16px', border: '1px solid #E4DCCF', borderRadius: '8px', marginTop: '15px', backgroundColor: '#FFFFFF' }}>
       {/* Retiro en persona: no necesita Código Postal ni cotización */}
       <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
         ¿Cómo querés recibir tu pedido?
@@ -232,11 +232,11 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
         style={{
           display: 'block',
           padding: '12px',
-          border: retiroSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+          border: retiroSeleccionado ? '2px solid #2F6B63' : '1px solid #e0e0e0',
           borderRadius: '6px',
           marginBottom: '16px',
           cursor: 'pointer',
-          backgroundColor: retiroSeleccionado ? '#f0f8ff' : '#fff',
+          backgroundColor: retiroSeleccionado ? '#F0F7F5' : '#fff',
         }}
       >
         <input
@@ -257,42 +257,49 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
         O calcular el costo de envío a domicilio:
       </p>
 
-      {/* Casilla para que el usuario escriba o modifique su Código Postal */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-        <input
-          type="text"
-          placeholder="Ej: 1650"
-          value={cpInput}
-          onChange={(e) => setCpInput(e.target.value)}
-          maxLength={5}
-          style={{
-            padding: '8px 12px',
-            border: '1px solid #ccc',
-            borderRadius: '6px',
-            width: '120px',
-            fontSize: '14px',
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => cotizar(cpInput)}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#009ee3',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-          }}
-        >
-          {cargando ? 'Buscando...' : 'Calcular'}
-        </button>
-      </div>
+      {/* En checkout el CP se ingresa una sola vez en los datos de domicilio. */}
+      {dentroDelCheckout ? (
+        <p style={{ margin: '0 0 15px', fontSize: '13px', color: '#716B63' }}>
+          Calculamos las opciones con el código postal que ingresaste en los datos de entrega.
+          {cpInput ? ` CP ${cpInput}.` : ' Completá el CP para consultar la cobertura.'}
+        </p>
+      ) : (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+          <input
+            type="text"
+            placeholder="Ej: 1650"
+            value={cpInput}
+            onChange={(e) => setCpInput(e.target.value)}
+            maxLength={5}
+            style={{
+              padding: '8px 12px',
+              border: '1px solid #E4DCCF',
+              borderRadius: '8px',
+              width: '120px',
+              fontSize: '14px',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => cotizar(cpInput)}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#2F6B63',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+            }}
+          >
+            {cargando ? 'Buscando...' : 'Calcular'}
+          </button>
+        </div>
+      )}
 
       {/* Estado de carga */}
       {cargando && (
-        <p style={{ color: '#009ee3', fontSize: '14px', fontWeight: 'bold' }}>
+        <p style={{ color: '#2F6B63', fontSize: '14px', fontWeight: 'bold' }}>
           ⏳ Consultando tarifas de Correo Argentino...
         </p>
       )}
@@ -321,11 +328,11 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
                 style={{
                   display: 'block',
                   padding: '12px',
-                  border: estaSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+                  border: estaSeleccionado ? '2px solid #2F6B63' : '1px solid #e0e0e0',
                   borderRadius: '6px',
                   marginBottom: '8px',
                   cursor: 'pointer',
-                  backgroundColor: estaSeleccionado ? '#f0f8ff' : '#fff',
+                  backgroundColor: estaSeleccionado ? '#F0F7F5' : '#fff',
                 }}
               >
                 <input

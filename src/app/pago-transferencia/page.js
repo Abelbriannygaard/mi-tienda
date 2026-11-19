@@ -72,9 +72,9 @@ export default function PagoTransferencia() {
         <p style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: 'bold', color: '#2F6B63' }}>
           ${formatearMonto(pedido.total)}
         </p>
-        {pedido.descuento > 0 && (
+        {(Number(pedido.descuento) || 0) + (Number(pedido.descuento_cupon) || 0) > 0 && (
           <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#15803d' }}>
-            Ya incluye tu descuento de ${formatearMonto(pedido.descuento)}
+            Ya incluye tus descuentos por ${formatearMonto((Number(pedido.descuento) || 0) + (Number(pedido.descuento_cupon) || 0))}
           </p>
         )}
       </div>

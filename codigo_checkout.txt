@@ -1,0 +1,5179 @@
+
+===== package.json =====
+{
+  "name": "mi-tienda",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@afipsdk/afip.js": "^1.2.3",
+    "@breezystack/lamejs": "^1.2.7",
+    "@supabase/supabase-js": "^2.111.0",
+    "fuse.js": "^7.5.0",
+    "mercadopago": "^3.2.1",
+    "next": "16.2.12",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "resend": "^6.20.0",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "tailwindcss": "^4"
+  }
+}
+
+
+===== src\app\admin\BotonConfirmarTransferencia.js =====
+'use client'
+
+import { useState } from 'react'
+
+export default function BotonConfirmarTransferencia({ pedido }) {
+  const [cargando, setCargando] = useState(false)
+  const [resultado, setResultado] = useState(null)
+
+  const esTransferencia = pedido.metodo_pago === 'transferencia'
+  const pendiente = pedido.estado === 'pending'
+  // Pagado pero la factura falló: el mismo botón la reintenta
+  const faltaFactura = pedido.estado === 'approved' && !pedido.factura_cae
+
+  if (!esTransferencia || (!pendiente && !faltaFactura)) return null
+
+  async function confirmar() {
+    const aviso = pendiente
+      ? `¿Ya viste $${pedido.total} acreditados en tu cuenta por el pedido #${pedido.id}?\n\nAl confirmar se marca como pagado, se emite la factura real en AFIP y se le avisa al cliente por email.`
+      : '¿Reintentar la factura de este pedido? Se emite una factura real en AFIP.'
+    if (!confirm(aviso)) return
+
+    setCargando(true)
+    setResultado(null)
+
+    try {
+      const res = await fetch('/api/admin/pedidos-confirmar-transferencia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedidoId: pedido.id }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        setResultado({ tipo: 'error', mensaje: data.error || 'Error al confirmar el pago.' })
+      } else if (!data.facturaOk) {
+        setResultado({
+          tipo: 'error',
+          mensaje: 'Pago confirmado, pero la factura falló. Recargá la página y tocá "Reintentar factura".',
+        })
+      } else {
+        setResultado({ tipo: 'ok', mensaje: 'Pago confirmado y factura emitida. Recargá la página.' })
+      }
+    } catch (err) {
+      setResultado({ tipo: 'error', mensaje: 'Error de conexión.' })
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: '10px' }}>
+      <button
+        onClick={confirmar}
+        disabled={cargando}
+        style={{
+          padding: '8px 14px',
+          fontSize: '13px',
+          fontWeight: '600',
+          backgroundColor: cargando ? '#ccc' : '#2F6B63',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          cursor: cargando ? 'not-allowed' : 'pointer',
+        }}
+      >
+        {cargando ? 'Confirmando...' : pendiente ? '🏦 Confirmar pago' : '🧾 Reintentar factura'}
+      </button>
+      {resultado && (
+        <p style={{ marginTop: '6px', fontSize: '13px', color: resultado.tipo === 'ok' ? '#15803d' : '#dc2626' }}>
+          {resultado.mensaje}
+        </p>
+      )}
+    </div>
+  )
+}
+
+===== src\app\admin\cupones\page.js =====
+import { createClient } from '@supabase/supabase-js'
+import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { normalizarCodigo, etiquetaDescuento } from '@/lib/configCupones'
+import QrCupon from './QrCupon'
+
+export const dynamic = 'force-dynamic'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+const SITIO = 'https://www.dimedetiambos.com.ar'
+const CODIGO_VALIDO = /^[A-Z0-9_-]{3,30}$/
+
+function volver(mensaje, tipo = 'error') {
+  redirect(`/admin/cupones?${tipo}=${encodeURIComponent(mensaje)}`)
+}
+
+// Estas acciones corren en el servidor y están dentro de /admin/cupones,
+// así que quedan protegidas igual que el resto del panel.
+async function crearCupon(formData) {
+  'use server'
+
+  const codigo = normalizarCodigo(formData.get('codigo'))
+  const tipo = formData.get('tipo') === 'monto' ? 'monto' : 'porcentaje'
+  const valor = Number(formData.get('valor'))
+  const maxUsosTexto = String(formData.get('max_usos') || '').trim()
+  const compraMinima = Number(formData.get('compra_minima')) || 0
+  const desde = String(formData.get('fecha_inicio') || '').trim()
+  const hasta = String(formData.get('fecha_fin') || '').trim()
+
+  if (!CODIGO_VALIDO.test(codigo)) {
+    volver('El código debe tener entre 3 y 30 caracteres: letras, números, guión o guión bajo.')
+  }
+  if (!(valor > 0)) volver('Ingresá un valor mayor a 0.')
+  if (tipo === 'porcentaje' && valor > 100) volver('El porcentaje no puede superar 100.')
+
+  const maxUsos = maxUsosTexto ? Math.floor(Number(maxUsosTexto)) : null
+  if (maxUsosTexto && !(maxUsos > 0)) volver('La cantidad máxima de usos tiene que ser un número mayor a 0.')
+  if (compraMinima < 0) volver('La compra mínima no puede ser negativa.')
+  if (desde && hasta && hasta < desde) volver('La fecha de fin no puede ser anterior a la de inicio.')
+
+  const { error } = await supabaseAdmin.from('cupones').insert({
+    codigo,
+    tipo,
+    valor,
+    max_usos: maxUsos,
+    compra_minima: compraMinima,
+    // Horario de Argentina: empieza a las 00:00 del día de inicio y termina a las 23:59 del día de fin
+    fecha_inicio: desde ? `${desde}T00:00:00-03:00` : null,
+    fecha_fin: hasta ? `${hasta}T23:59:59-03:00` : null,
+  })
+
+  if (error) {
+    console.error('Error al crear el cupón:', error)
+    volver(error.code === '23505' ? 'Ya existe un cupón con ese código.' : 'No se pudo crear el cupón.')
+  }
+
+  revalidatePath('/admin/cupones')
+  volver('Cupón creado.', 'ok')
+}
+
+async function alternarCupon(formData) {
+  'use server'
+  const id = Number(formData.get('id'))
+  const estabaActivo = formData.get('activo') === 'true'
+  await supabaseAdmin.from('cupones').update({ activo: !estabaActivo }).eq('id', id)
+  revalidatePath('/admin/cupones')
+}
+
+// Solo se pueden eliminar cupones apagados, para no borrar uno activo por error
+async function eliminarCupon(formData) {
+  'use server'
+  const id = Number(formData.get('id'))
+  await supabaseAdmin.from('cupones').delete().eq('id', id).eq('activo', false)
+  revalidatePath('/admin/cupones')
+}
+
+function estadoDe(cupon, ahora) {
+  if (!cupon.activo) return { label: 'Apagado', fondo: '#f3f4f6', texto: '#6b7280' }
+  if (cupon.fecha_fin && new Date(cupon.fecha_fin) < ahora) return { label: 'Vencido', fondo: '#fee2e2', texto: '#b91c1c' }
+  if (cupon.max_usos != null && cupon.usos >= cupon.max_usos) return { label: 'Agotado', fondo: '#fee2e2', texto: '#b91c1c' }
+  if (cupon.fecha_inicio && new Date(cupon.fecha_inicio) > ahora) return { label: 'Aún no empieza', fondo: '#fef9c3', texto: '#a16207' }
+  return { label: 'Activo', fondo: '#dcfce7', texto: '#15803d' }
+}
+
+function fechaCorta(valor) {
+  return new Date(valor).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })
+}
+
+const campoStyle = {
+  display: 'block',
+  width: '100%',
+  padding: '8px 10px',
+  marginTop: '4px',
+  border: '1px solid #ccc',
+  borderRadius: '6px',
+  boxSizing: 'border-box',
+}
+
+const botonChico = {
+  padding: '6px 14px',
+  fontSize: '13px',
+  border: '1px solid #ccc',
+  borderRadius: '6px',
+  background: '#fff',
+  cursor: 'pointer',
+}
+
+export default async function PanelCupones({ searchParams }) {
+  const { error: mensajeError, ok: mensajeOk } = await searchParams
+
+  const { data: cupones, error } = await supabaseAdmin
+    .from('cupones')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  const ahora = new Date()
+
+  return (
+    <main style={{ padding: '40px', maxWidth: '900px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>🎟️ Cupones de descuento</h1>
+        <Link
+          href="/admin"
+          style={{ padding: '8px 16px', fontSize: '14px', border: '1px solid #999', borderRadius: '8px', color: '#555', textDecoration: 'none' }}
+        >
+          ← Volver a pedidos
+        </Link>
+      </div>
+
+      {mensajeError && <p style={{ color: '#b91c1c', marginBottom: '12px' }}>{mensajeError}</p>}
+      {mensajeOk && <p style={{ color: '#15803d', marginBottom: '12px' }}>{mensajeOk}</p>}
+
+      <form
+        action={crearCupon}
+        style={{ border: '1px solid #e5e5e5', borderRadius: '10px', padding: '20px', backgroundColor: '#fff', marginBottom: '28px' }}
+      >
+        <h2 style={{ margin: '0 0 14px', fontSize: '17px' }}>Crear cupón</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+          <label style={{ fontSize: '14px' }}>
+            Código *
+            <input name="codigo" required placeholder="VERANO10" style={{ ...campoStyle, textTransform: 'uppercase' }} />
+          </label>
+          <label style={{ fontSize: '14px' }}>
+            Tipo de descuento
+            <select name="tipo" defaultValue="porcentaje" style={campoStyle}>
+              <option value="porcentaje">Porcentaje (%)</option>
+              <option value="monto">Monto fijo ($)</option>
+            </select>
+          </label>
+          <label style={{ fontSize: '14px' }}>
+            Valor *
+            <input name="valor" type="number" min="1" step="any" required placeholder="10" style={campoStyle} />
+          </label>
+          <label style={{ fontSize: '14px' }}>
+            Compra mínima en productos ($)
+            <input name="compra_minima" type="number" min="0" placeholder="0" style={campoStyle} />
+          </label>
+          <label style={{ fontSize: '14px' }}>
+            Usos máximos (vacío = sin límite)
+            <input name="max_usos" type="number" min="1" placeholder="Sin límite" style={campoStyle} />
+          </label>
+          <label style={{ fontSize: '14px' }}>
+            Desde (opcional)
+            <input name="fecha_inicio" type="date" style={campoStyle} />
+          </label>
+          <label style={{ fontSize: '14px' }}>
+            Hasta (opcional)
+            <input name="fecha_fin" type="date" style={campoStyle} />
+          </label>
+        </div>
+        <button
+          type="submit"
+          style={{ marginTop: '16px', padding: '10px 20px', border: 'none', borderRadius: '8px', color: 'white', backgroundColor: '#2F6B63', cursor: 'pointer', fontSize: '15px' }}
+        >
+          Crear cupón
+        </button>
+        <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#888' }}>
+          El cupón descuenta solo los productos (no el envío) y se aplica antes del descuento por transferencia.
+        </p>
+      </form>
+
+      {error && <p style={{ color: '#dc2626' }}>Error al cargar los cupones: {error.message}</p>}
+
+      {!error && (!cupones || cupones.length === 0) && (
+        <p style={{ color: '#888' }}>Todavía no creaste ningún cupón.</p>
+      )}
+
+      {!error && cupones && cupones.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {cupones.map((cupon) => {
+            const estado = estadoDe(cupon, ahora)
+            const minimo = Number(cupon.compra_minima) || 0
+            const link = `${SITIO}/?cupon=${encodeURIComponent(cupon.codigo)}`
+
+            return (
+              <div key={cupon.id} style={{ border: '1px solid #e5e5e5', borderRadius: '10px', padding: '20px', backgroundColor: '#fff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 'bold', fontSize: '18px', letterSpacing: '0.5px' }}>{cupon.codigo}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#666' }}>
+                      {etiquetaDescuento(cupon)} en productos
+                      {minimo > 0 ? ` · compra mínima $${minimo.toLocaleString('es-AR')}` : ''}
+                    </p>
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#888' }}>
+                      Usos: {cupon.usos}
+                      {cupon.max_usos != null ? ` de ${cupon.max_usos}` : ' (sin límite)'}
+                      {cupon.fecha_inicio ? ` · desde ${fechaCorta(cupon.fecha_inicio)}` : ''}
+                      {cupon.fecha_fin ? ` · hasta ${fechaCorta(cupon.fecha_fin)}` : ''}
+                    </p>
+                  </div>
+                  <span
+                    style={{
+                      alignSelf: 'flex-start',
+                      padding: '4px 12px',
+                      borderRadius: '999px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      backgroundColor: estado.fondo,
+                      color: estado.texto,
+                    }}
+                  >
+                    {estado.label}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
+                  <form action={alternarCupon}>
+                    <input type="hidden" name="id" value={cupon.id} />
+                    <input type="hidden" name="activo" value={String(cupon.activo)} />
+                    <button type="submit" style={botonChico}>
+                      {cupon.activo ? 'Apagar' : 'Activar'}
+                    </button>
+                  </form>
+                  {!cupon.activo && (
+                    <form action={eliminarCupon}>
+                      <input type="hidden" name="id" value={cupon.id} />
+                      <button type="submit" style={{ ...botonChico, color: '#b91c1c', borderColor: '#fca5a5' }}>
+                        Eliminar
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                <QrCupon url={link} codigo={cupon.codigo} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </main>
+  )
+}
+
+
+===== src\app\admin\cupones\QrCupon.js =====
+'use client'
+
+import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
+
+// Genera el QR de un cupón en el navegador y permite descargarlo para imprimir
+export default function QrCupon({ url, codigo }) {
+  const [src, setSrc] = useState(null)
+
+  useEffect(() => {
+    QRCode.toDataURL(url, { width: 600, margin: 2, errorCorrectionLevel: 'M' })
+      .then(setSrc)
+      .catch(() => setSrc(null))
+  }, [url])
+
+  if (!src) return null
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px' }}>
+      <img src={src} alt={`QR del cupón ${codigo}`} width={110} height={110} style={{ border: '1px solid #e5e5e5', borderRadius: '6px' }} />
+      <div style={{ fontSize: '13px', color: '#666' }}>
+        <p style={{ margin: '0 0 6px', wordBreak: 'break-all' }}>{url}</p>
+        <a
+          href={src}
+          download={`qr-cupon-${codigo}.png`}
+          style={{ color: '#2F6B63', fontWeight: 600 }}
+        >
+          ⬇️ Descargar QR
+        </a>
+      </div>
+    </div>
+  )
+}
+
+
+===== src\app\admin\page.js =====
+import { createClient } from '@supabase/supabase-js'
+import CerrarSesionBoton from './CerrarSesionBoton'
+import BotonGenerarEtiqueta from './BotonGenerarEtiqueta'
+import BotonAnularFactura from './BotonAnularFactura'
+import BotonConfirmarTransferencia from './BotonConfirmarTransferencia'
+import EditarDireccionBoton from './EditarDireccionBoton'
+import Link from 'next/link'
+export const dynamic = 'force-dynamic'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+const coloresEstado = {
+  approved: { fondo: '#dcfce7', texto: '#15803d', label: 'Aprobado' },
+  pending: { fondo: '#fef9c3', texto: '#a16207', label: 'Pendiente' },
+  in_process: { fondo: '#fef9c3', texto: '#a16207', label: 'En proceso' },
+  rejected: { fondo: '#fee2e2', texto: '#b91c1c', label: 'Rechazado' },
+  cancelled: { fondo: '#f3f4f6', texto: '#6b7280', label: 'Cancelado' },
+}
+
+export default async function PanelAdmin() {
+  const { data: pedidos, error } = await supabaseAdmin
+    .from('pedidos')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  return (
+    <main style={{ padding: '40px', maxWidth: '1100px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>Pedidos</h1>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Link
+  href="/admin/cupones"
+  style={{ padding: '8px 16px', fontSize: '14px', border: '1px solid #2F6B63', borderRadius: '8px', color: '#2F6B63', textDecoration: 'none' }}
+>
+  🎟️ Cupones
+</Link>
+          <Link
+                      href="/admin/envio-manual"
+            style={{ padding: '8px 16px', fontSize: '14px', border: '1px solid #15803d', borderRadius: '8px', color: '#15803d', textDecoration: 'none' }}
+          >
+            📦 Envío manual
+          </Link>
+          <Link
+            href="/admin/conversaciones"
+            style={{ padding: '8px 16px', fontSize: '14px', border: '1px solid #009ee3', borderRadius: '8px', color: '#009ee3', textDecoration: 'none' }}
+          >
+            💬 Conversaciones
+          </Link>
+          <CerrarSesionBoton />
+        </div>
+      </div>
+
+      {error && (
+        <p style={{ color: '#dc2626' }}>Error al cargar los pedidos: {error.message}</p>
+      )}
+
+      {!error && (!pedidos || pedidos.length === 0) && (
+        <p style={{ color: '#888' }}>Todavía no hay pedidos registrados.</p>
+      )}
+
+      {!error && pedidos && pedidos.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {pedidos.map((pedido) => {
+            const esTransferencia = pedido.metodo_pago === 'transferencia'
+            const esperandoTransferencia = esTransferencia && pedido.estado === 'pending'
+            const esRetiro = pedido.zona_envio === 'Retiro en persona'
+
+            const estado = esperandoTransferencia
+              ? { fondo: '#fef9c3', texto: '#a16207', label: 'Esperando transferencia' }
+              : coloresEstado[pedido.estado] || {
+                  fondo: '#f3f4f6',
+                  texto: '#6b7280',
+                  label: pedido.estado,
+                }
+
+            return (
+              <div
+                key={pedido.id}
+                style={{
+                  border: esperandoTransferencia ? '2px solid #fde68a' : '1px solid #e5e5e5',
+                  borderRadius: '10px',
+                  padding: '20px',
+                  backgroundColor: '#fff',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <p style={{ margin: 0, fontWeight: 'bold', fontSize: '16px' }}>
+                      {pedido.cliente_nombre || 'Sin nombre'}
+                    </p>
+                    <p style={{ margin: '4px 0 0', fontSize: '14px', color: '#666' }}>
+                      {pedido.comprador_email}
+                      {pedido.cliente_telefono ? ` · ${pedido.cliente_telefono}` : ''}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '4px 12px',
+                        borderRadius: '999px',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        backgroundColor: estado.fondo,
+                        color: estado.texto,
+                      }}
+                    >
+                      {estado.label}
+                    </span>
+                    {esTransferencia && (
+                      <span style={{ display: 'inline-block', marginLeft: '6px', fontSize: '13px', color: '#2F6B63', fontWeight: '600' }}>
+                        🏦 Transferencia
+                      </span>
+                    )}
+                    <p style={{ margin: '6px 0 0', fontWeight: 'bold', fontSize: '18px' }}>
+                      ${pedido.total}
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '14px', borderTop: '1px solid #f0f0f0', paddingTop: '14px' }}>
+                  {(pedido.items || []).map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', margin: '6px 0' }}>
+                      {item.imagen_url && (
+                        <div
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            flexShrink: 0,
+                            borderRadius: '6px',
+                            border: '1px solid #e5e5e5',
+                            backgroundColor: '#fafafa',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <img
+                            src={item.imagen_url}
+                            alt={item.nombre}
+                            style={{ maxWidth: '44px', maxHeight: '44px', objectFit: 'contain' }}
+                          />
+                        </div>
+                      )}
+                      <p style={{ margin: 0, fontSize: '14px', color: '#333' }}>
+                        {item.precio < 0
+                          ? `${item.nombre} — −$${Math.abs(item.precio * item.cantidad)}`
+                          : `${item.cantidad} x ${item.nombre} — $${item.precio}`}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {pedido.direccion && (
+                  <p style={{ marginTop: '10px', fontSize: '13px', color: '#666' }}>
+                    📍 {pedido.direccion.calle} {pedido.direccion.numero}
+                    {pedido.direccion.pisoDepto ? `, ${pedido.direccion.pisoDepto}` : ''}, {pedido.direccion.ciudad} (CP {pedido.direccion.codigoPostal})
+                    {pedido.zona_envio ? ` · Envío: ${pedido.zona_envio} ($${pedido.costo_envio})` : ''}
+                  </p>
+                )}
+
+                {esRetiro && (
+                  <p style={{ marginTop: '10px', fontSize: '13px', color: '#2F6B63', fontWeight: '600' }}>
+                    🏬 Retiro en persona (sin envío)
+                  </p>
+                )}
+
+                {pedido.notas && (
+                  <p style={{ marginTop: '6px', fontSize: '13px', color: '#666', fontStyle: 'italic' }}>
+                    Nota: {pedido.notas}
+                  </p>
+                )}
+
+                <p style={{ marginTop: '10px', fontSize: '12px', color: '#aaa' }}>
+                  Pedido #{pedido.id} · {esTransferencia ? 'Ref' : 'Pago'} #{pedido.mercadopago_payment_id} · {new Date(pedido.created_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
+                </p>
+                <BotonConfirmarTransferencia pedido={pedido} />
+                {!esperandoTransferencia && !esRetiro && <BotonGenerarEtiqueta pedido={pedido} />}
+                <BotonAnularFactura pedido={pedido} />
+                <EditarDireccionBoton pedido={pedido} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </main>
+  )
+}
+
+
+===== src\app\api\admin\pedidos-confirmar-transferencia\route.js =====
+import { NextResponse } from 'next/server'
+import { esAdmin } from '@/lib/adminAuth'
+import { confirmarPagoTransferencia } from '@/lib/transferencias'
+
+export async function POST(request) {
+  if (!(await esAdmin())) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
+  try {
+    const { pedidoId } = await request.json()
+
+    if (!pedidoId) {
+      return NextResponse.json({ error: 'Falta el ID del pedido' }, { status: 400 })
+    }
+
+    const resultado = await confirmarPagoTransferencia(pedidoId)
+
+    if (!resultado.ok) {
+      return NextResponse.json({ error: resultado.error }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, ...resultado })
+  } catch (error) {
+    console.error('Error al confirmar pago por transferencia:', error)
+    return NextResponse.json({ error: error.message || 'Error al confirmar el pago' }, { status: 500 })
+  }
+}
+
+===== src\app\api\crear-pedido-transferencia\route.js =====
+// DESTINO: src/app/api/crear-pedido-transferencia/route.js  (reemplaza el archivo actual)
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
+import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import { nombreLineaCupon } from '@/lib/configCupones'
+import {
+  validarCuponParaPedido,
+  usarCupon,
+  devolverUsoCupon,
+  usuarioDesdeRequest,
+  reservarUsoCuenta,
+  liberarUsoCuenta,
+  vincularUsoConPedido,
+  MENSAJE_LOGIN,
+  MENSAJE_YA_USADO,
+} from '@/lib/cupones'
+import {
+  enviarEmailInstruccionesTransferencia,
+  enviarEmailNotificacionTransferencia,
+} from '@/lib/enviarEmails'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+async function verificarRecaptcha(token) {
+  if (!token) return false
+
+  try {
+    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${token}`,
+    })
+
+    const data = await res.json()
+    return data.success && data.score >= 0.5 && data.action === 'checkout'
+  } catch (error) {
+    console.error('Error al verificar reCAPTCHA:', error)
+    return false
+  }
+}
+
+export async function POST(request) {
+  // Si el pedido no se llega a guardar, se devuelven los usos que se habían reservado
+  let cuponReservado = null
+  let usoCuentaReservado = null // { userId, codigo }
+
+  async function deshacerReservas() {
+    if (cuponReservado) {
+      await devolverUsoCupon(cuponReservado)
+      cuponReservado = null
+    }
+    if (usoCuentaReservado) {
+      await liberarUsoCuenta(usoCuentaReservado.userId, usoCuentaReservado.codigo)
+      usoCuentaReservado = null
+    }
+  }
+
+  try {
+    const { items, zonaEnvio, datosCliente, recaptchaToken, cuponCodigo } = await request.json()
+
+    const recaptchaValido = await verificarRecaptcha(recaptchaToken)
+    if (!recaptchaValido) {
+      return NextResponse.json(
+        { error: 'No pudimos verificar que sos una persona real. Recargá la página e intentá de nuevo.' },
+        { status: 400 }
+      )
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'Tu carrito está vacío' }, { status: 400 })
+    }
+    if (!zonaEnvio) {
+      return NextResponse.json({ error: 'Elegí una zona de envío' }, { status: 400 })
+    }
+    if (!datosCliente?.nombre || !datosCliente?.email) {
+      return NextResponse.json({ error: 'Faltan tus datos de contacto' }, { status: 400 })
+    }
+
+    // Mismo criterio que crear-preferencia: se toman nombre y precio del carrito.
+    // Se limpian cantidad y precio para que no entren valores raros.
+    const itemsPedido = items.map((item) => {
+      const cantidad = Math.max(1, parseInt(item.cantidad, 10) || 1)
+      const precio = Math.max(0, Number(item.precio) || 0)
+      const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null].filter(Boolean).join(' - ')
+
+      return {
+        nombre: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+        cantidad,
+        precio,
+        imagen_url: item.imagen_url || null,
+      }
+    })
+
+    const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+
+    // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
+    // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
+    let cupon = null
+    let descuentoCupon = 0
+
+    if (cuponCodigo) {
+      // Para usar un cupón hay que haber ingresado con Google
+      const usuario = await usuarioDesdeRequest(request)
+      if (!usuario) {
+        return NextResponse.json(
+          { error: MENSAJE_LOGIN, cupon_invalido: true, login_requerido: true },
+          { status: 401 }
+        )
+      }
+
+      // El cupón se valida y se calcula acá, nunca se confía en el descuento que manda el navegador
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotal, usuario.id)
+      if (!validacion.ok) {
+        return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
+      }
+
+      const reservado = await usarCupon(validacion.cupon.codigo)
+      if (!reservado) {
+        return NextResponse.json(
+          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+      cuponReservado = validacion.cupon.codigo
+
+      const uso = await reservarUsoCuenta(usuario.id, validacion.cupon.codigo)
+      if (uso !== 'ok') {
+        await deshacerReservas()
+        return NextResponse.json(
+          {
+            error: uso === 'ya_usado' ? MENSAJE_YA_USADO : 'No pudimos verificar el cupón. Probá de nuevo.',
+            cupon_invalido: true,
+          },
+          { status: 400 }
+        )
+      }
+      usoCuentaReservado = { userId: usuario.id, codigo: validacion.cupon.codigo }
+
+      cupon = validacion.cupon
+      descuentoCupon = validacion.descuento
+    }
+
+    const subtotalConCupon = subtotal - descuentoCupon
+    const descuento = Math.round(subtotalConCupon * DESCUENTO_TRANSFERENCIA)
+    const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
+    const total = subtotalConCupon - descuento + costoEnvio
+
+    // Los descuentos quedan como líneas con precio negativo, así todo suma igual
+    // en el admin, en los emails y en la factura
+    if (descuentoCupon > 0) {
+      itemsPedido.push({
+        nombre: nombreLineaCupon(cupon),
+        cantidad: 1,
+        precio: -descuentoCupon,
+        imagen_url: null,
+      })
+    }
+
+    if (descuento > 0) {
+      itemsPedido.push({
+        nombre: `Descuento por transferencia (${Math.round(DESCUENTO_TRANSFERENCIA * 100)}%)`,
+        cantidad: 1,
+        precio: -descuento,
+        imagen_url: null,
+      })
+    }
+
+    const direccion = datosCliente.calle
+      ? {
+          calle: datosCliente.calle,
+          numero: datosCliente.numero,
+          pisoDepto: datosCliente.pisoDepto || null,
+          ciudad: datosCliente.ciudad,
+          codigoPostal: datosCliente.codigoPostal || null,
+        }
+      : null
+
+    // La tabla identifica cada pedido por esta columna: se usa una referencia propia que arranca con TR-
+    const referencia =
+      'TR-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase()
+
+    const { data: pedido, error: errorInsert } = await supabaseAdmin
+      .from('pedidos')
+      .insert({
+        mercadopago_payment_id: referencia,
+        estado: 'pending',
+        metodo_pago: 'transferencia',
+        descuento,
+        cupon_codigo: cupon ? cupon.codigo : null,
+        descuento_cupon: descuentoCupon,
+        total,
+        items: itemsPedido,
+        comprador_email: datosCliente.email || null,
+        cliente_nombre: datosCliente.nombre || null,
+        cliente_dni: datosCliente.dni || null,
+        cliente_telefono: datosCliente.telefono || null,
+        direccion,
+        zona_envio: zonaEnvio.nombre || null,
+        costo_envio: costoEnvio,
+        envio_carrier: zonaEnvio.envioCarrier || zonaEnvio.envio_carrier || null,
+        envio_service_code: zonaEnvio.envioServiceCode || zonaEnvio.envio_service_code || null,
+        envio_branch_code: zonaEnvio.envioBranchCode || zonaEnvio.envio_branch_code || null,
+        notas: datosCliente.notas || null,
+      })
+      .select('id')
+      .single()
+
+    if (errorInsert) {
+      console.error('Error al guardar el pedido por transferencia:', errorInsert)
+      await deshacerReservas()
+      return NextResponse.json({ error: 'No se pudo guardar el pedido. Probá de nuevo.' }, { status: 500 })
+    }
+
+    // El pedido ya está guardado: los usos del cupón quedan firmes aunque falle algo después (por ejemplo un email)
+    if (usoCuentaReservado) {
+      await vincularUsoConPedido(usoCuentaReservado.userId, usoCuentaReservado.codigo, pedido.id)
+    }
+    cuponReservado = null
+    usoCuentaReservado = null
+
+    const pedidoParaEmail = {
+      id: pedido.id,
+      cliente_nombre: datosCliente.nombre || null,
+      comprador_email: datosCliente.email || null,
+      cliente_telefono: datosCliente.telefono || null,
+      cliente_dni: datosCliente.dni || null,
+      items: itemsPedido,
+      total,
+      zona_envio: zonaEnvio.nombre || null,
+      costo_envio: costoEnvio,
+      direccion,
+      notas: datosCliente.notas || null,
+    }
+
+    await enviarEmailInstruccionesTransferencia(pedidoParaEmail)
+    await enviarEmailNotificacionTransferencia(pedidoParaEmail)
+
+    return NextResponse.json({ pedido_id: pedido.id, total, descuento })
+  } catch (error) {
+    console.error('Error al crear pedido por transferencia:', error)
+    await deshacerReservas()
+    return NextResponse.json({ error: 'Error al crear el pedido' }, { status: 500 })
+  }
+}
+
+===== src\app\api\crear-preferencia\route.js =====
+// DESTINO: src/app/api/crear-preferencia/route.js  (reemplaza el archivo actual)
+import { MercadoPagoConfig, Preference } from 'mercadopago'
+import { NextResponse } from 'next/server'
+import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import {
+  validarCuponParaPedido,
+  usarCupon,
+  devolverUsoCupon,
+  repartirDescuentoEnItems,
+  usuarioDesdeRequest,
+  MENSAJE_LOGIN,
+} from '@/lib/cupones'
+
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
+})
+
+async function verificarRecaptcha(token) {
+  if (!token) return false
+
+  try {
+    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${token}`,
+    })
+
+    const data = await res.json()
+
+    // score va de 0 (bot) a 1 (humano). 0.5 es el umbral recomendado por Google.
+    return data.success && data.score >= 0.5 && data.action === 'checkout'
+  } catch (error) {
+    console.error('Error al verificar reCAPTCHA:', error)
+    return false
+  }
+}
+
+export async function POST(request) {
+  // Si el pago no se llega a crear, se devuelve el uso del cupón que se había reservado
+  let cuponReservado = null
+
+  try {
+    const { items, zonaEnvio, datosCliente, recaptchaToken, cuponCodigo } = await request.json()
+
+    const recaptchaValido = await verificarRecaptcha(recaptchaToken)
+    if (!recaptchaValido) {
+      return NextResponse.json(
+        { error: 'No pudimos verificar que sos una persona real. Recargá la página e intentá de nuevo.' },
+        { status: 400 }
+      )
+    }
+
+    const subtotalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+
+    // Cupón: se valida y se calcula acá, nunca se confía en el descuento que manda el navegador.
+    // Para usar un cupón hay que haber ingresado con Google.
+    let cupon = null
+    let descuentoCupon = 0
+    let usuario = null
+
+    if (cuponCodigo) {
+      usuario = await usuarioDesdeRequest(request)
+      if (!usuario) {
+        return NextResponse.json(
+          { error: MENSAJE_LOGIN, cupon_invalido: true, login_requerido: true },
+          { status: 401 }
+        )
+      }
+
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotalProductos, usuario.id)
+      if (!validacion.ok) {
+        return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
+      }
+      if (validacion.descuento >= subtotalProductos) {
+        return NextResponse.json(
+          { error: 'Este cupón cubre todo el pedido y no se puede usar con Mercado Pago. Escribinos y lo resolvemos.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+
+      const reservado = await usarCupon(validacion.cupon.codigo)
+      if (!reservado) {
+        return NextResponse.json(
+          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+
+      cuponReservado = validacion.cupon.codigo
+      cupon = validacion.cupon
+      descuentoCupon = validacion.descuento
+    }
+
+    const preference = new Preference(client)
+
+    const itemsParaMP = items.map((item) => {
+      const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null]
+        .filter(Boolean)
+        .join(' - ')
+
+      return {
+        id: String(item.id),
+        title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+        quantity: item.cantidad,
+        unit_price: item.precio,
+        currency_id: 'ARS',
+      }
+    })
+
+    // Mercado Pago no acepta líneas con precio negativo: el descuento del cupón se reparte
+    // entre los precios de los productos (el total queda correcto)
+    const itemsConCupon = repartirDescuentoEnItems(itemsParaMP, descuentoCupon)
+
+    // Envío gratis desde cierto monto (medido después del cupón): el costo se recalcula acá,
+    // no se confía en el del navegador
+    const subtotalConCupon = subtotalProductos - descuentoCupon
+    const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
+
+    if (zonaEnvio && costoEnvio > 0) {
+      itemsConCupon.push({
+        id: 'envio',
+        title: `Envío - ${zonaEnvio.nombre}`,
+        quantity: 1,
+        unit_price: costoEnvio,
+        currency_id: 'ARS',
+      })
+    }
+
+    // Guardamos también los items originales (con imagen_url) en metadata,
+    // porque Mercado Pago no permite campos custom dentro de "items".
+    const itemsOriginales = items.map((item) => ({
+      nombre: item.nombre,
+      color: item.color || null,
+      talle: item.talle || null,
+      imagen_url: item.imagen_url || null,
+    }))
+
+    const resultado = await preference.create({
+      body: {
+        items: itemsConCupon,
+        payer: {
+          name: datosCliente?.nombre,
+          email: datosCliente?.email,
+        },
+        metadata: {
+          datos_cliente: datosCliente,
+          zona_envio: zonaEnvio ? { ...zonaEnvio, costo: costoEnvio } : null,
+          items_originales: itemsOriginales,
+          cupon: cupon ? { codigo: cupon.codigo, descuento: descuentoCupon } : null,
+          // Quién usó el cupón: al aprobarse el pago, el webhook lo anota en esa cuenta
+          usuario_id: usuario ? usuario.id : null,
+        },
+        back_urls: {
+          success: 'https://www.dimedetiambos.com.ar/pago-exitoso',
+          failure: 'https://www.dimedetiambos.com.ar/pago-fallido',
+          pending: 'https://www.dimedetiambos.com.ar/pago-pendiente',
+        },
+        auto_return: 'approved',
+        notification_url: 'https://www.dimedetiambos.com.ar/api/webhook-mercadopago',
+      },
+    })
+
+    return NextResponse.json({ id: resultado.id, init_point: resultado.init_point })
+  } catch (error) {
+    console.error('Error al crear preferencia:', error)
+    if (cuponReservado) await devolverUsoCupon(cuponReservado)
+    return NextResponse.json({ error: 'Error al crear la preferencia de pago' }, { status: 500 })
+  }
+}
+
+===== src\app\api\validar-cupon\route.js =====
+// DESTINO: src/app/api/validar-cupon/route.js  (reemplaza el archivo actual)
+import { NextResponse } from 'next/server'
+import { buscarCuponValido, usuarioDesdeRequest, MENSAJE_LOGIN } from '@/lib/cupones'
+
+// Confirma que el cupón existe, está vigente y que esta cuenta todavía no lo usó,
+// y devuelve lo mínimo para mostrar el descuento.
+// Hay que haber ingresado con Google. El descuento definitivo siempre se vuelve a calcular
+// en el servidor al crear el pedido.
+export async function POST(request) {
+  try {
+    const usuario = await usuarioDesdeRequest(request)
+    if (!usuario) {
+      return NextResponse.json({ error: MENSAJE_LOGIN, login_requerido: true }, { status: 401 })
+    }
+
+    const { codigo } = await request.json()
+    const resultado = await buscarCuponValido(codigo, usuario.id)
+
+    if (!resultado.ok) {
+      return NextResponse.json({ error: resultado.error }, { status: 400 })
+    }
+
+    const { codigo: codigoCupon, tipo, valor, compra_minima } = resultado.cupon
+    return NextResponse.json({
+      cupon: {
+        codigo: codigoCupon,
+        tipo,
+        valor: Number(valor),
+        compra_minima: Number(compra_minima) || 0,
+      },
+    })
+  } catch (error) {
+    console.error('Error al validar el cupón:', error)
+    return NextResponse.json({ error: 'No pudimos verificar el cupón. Probá de nuevo.' }, { status: 500 })
+  }
+}
+
+===== src\app\api\whatsapp\webhook\route.js =====
+import { createClient } from "@supabase/supabase-js";
+import webpush from "web-push";
+
+// Descargar archivos de WhatsApp puede tardar unos segundos
+export const maxDuration = 30;
+
+webpush.setVapidDetails(
+  "mailto:dimedetiambos@gmail.com",
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+);
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const BUCKET_MEDIA = "whatsapp-media";
+// true = el bot responde solo. false = el bot no responde y solo contesta una persona del local.
+const BOT_ACTIVO = true;
+
+// Tipos de archivo que recibimos y cómo se rotulan en el panel
+const ETIQUETAS_MEDIA = {
+  image: "📷 Foto",
+  video: "🎥 Video",
+  audio: "🎤 Audio",
+  document: "📎 Documento",
+  sticker: "🏷️ Sticker",
+};
+
+const AVISO_ARCHIVO_RECIBIDO =
+  "¡Gracias! 🙌 Recibí tu archivo. Una persona del local lo va a revisar y te responde a la brevedad.";
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const mode = searchParams.get("hub.mode");
+  const token = searchParams.get("hub.verify_token");
+  const challenge = searchParams.get("hub.challenge");
+
+  if (mode === "subscribe" && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+    return new Response(challenge, { status: 200 });
+  }
+  return new Response("Forbidden", { status: 403 });
+}
+
+export async function POST(request) {
+  const body = await request.json();
+
+  // Estados de entrega de WhatsApp (sent, delivered, read, failed)
+  const statuses = body?.entry?.[0]?.changes?.[0]?.value?.statuses;
+  if (statuses) console.log("STATUS WhatsApp:", JSON.stringify(statuses));
+
+  try {
+    const entry = body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const message = changes?.value?.messages?.[0];
+
+    if (!message) {
+      return new Response("OK", { status: 200 });
+    }
+
+    // Meta reenvía el aviso si tardamos en responder: si este mensaje ya lo guardamos, no lo repetimos
+    if (message.id) {
+      const { data: yaGuardado } = await supabase
+        .from("whatsapp_conversaciones")
+        .select("id")
+        .eq("wa_id", message.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (yaGuardado) {
+        return new Response("OK", { status: 200 });
+      }
+    }
+
+    const from = message.from;
+    const paraEnviar = from.startsWith("549") ? "54" + from.slice(3) : from;
+    const texto = message.text?.body;
+
+    if (texto) {
+      const hiloId = await obtenerOCrearHilo(from);
+      await asegurarCliente(from);
+      await guardarMensaje(from, hiloId, "user", texto, { wa_id: message.id });
+      await avisarNuevoMensaje(from, texto);
+
+      const pausado = await estaBotPausado(from);
+
+      if (!pausado && BOT_ACTIVO) {
+        const historial = await obtenerHistorialDelHilo(hiloId);
+        const respuesta = await preguntarleAClaude(historial);
+
+        await guardarMensaje(from, hiloId, "model", respuesta);
+        await mandarMensajeWhatsApp(paraEnviar, respuesta);
+      }
+    } else if (ETIQUETAS_MEDIA[message.type]) {
+      await procesarArchivoRecibido(message, from, paraEnviar);
+    }
+
+    return new Response("OK", { status: 200 });
+  } catch (error) {
+    console.error("Error en webhook de WhatsApp:", error);
+    return new Response("Error", { status: 500 });
+  }
+}
+
+// Foto, video, audio, documento o sticker que manda el cliente
+async function procesarArchivoRecibido(message, from, paraEnviar) {
+  const tipo = message.type;
+  const datos = message[tipo] || {};
+  const caption = datos.caption || "";
+  const etiqueta = ETIQUETAS_MEDIA[tipo];
+  const mensaje = caption ? `${etiqueta}\n${caption}` : etiqueta;
+
+  const hiloId = await obtenerOCrearHilo(from);
+  await asegurarCliente(from);
+
+  let archivo = null;
+  try {
+    archivo = await descargarYGuardarArchivo(datos.id, from, datos.mime_type, datos.filename);
+  } catch (error) {
+    console.error("No se pudo descargar el archivo de WhatsApp:", error.message);
+  }
+
+  await guardarMensaje(from, hiloId, "user", mensaje, {
+    tipo,
+    media_url: archivo?.url || null,
+    media_mime: archivo?.mime || datos.mime_type || null,
+    media_nombre: datos.filename || null,
+    wa_id: message.id,
+  });
+
+  await avisarNuevoMensaje(from, mensaje);
+
+  // El bot no sabe interpretar archivos: avisa que una persona lo va a ver y se pausa
+  const pausado = await estaBotPausado(from);
+  if (!pausado && BOT_ACTIVO) {
+    await guardarMensaje(from, hiloId, "model", AVISO_ARCHIVO_RECIBIDO);
+    await mandarMensajeWhatsApp(paraEnviar, AVISO_ARCHIVO_RECIBIDO);
+    await supabase
+      .from("whatsapp_clientes")
+      .update({ bot_pausado: true })
+      .eq("numero_cliente", from);
+  }
+}
+
+function extensionDeMime(mime, nombre) {
+  const base = (mime || "").split(";")[0].trim().toLowerCase();
+  const mapa = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "video/mp4": "mp4",
+    "video/3gpp": "3gp",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "audio/amr": "amr",
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-excel": "xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/plain": "txt",
+  };
+  if (mapa[base]) return mapa[base];
+
+  if (nombre && nombre.includes(".")) {
+    const deNombre = nombre.split(".").pop();
+    if (/^[a-zA-Z0-9]{1,6}$/.test(deNombre)) return deNombre.toLowerCase();
+  }
+  return "bin";
+}
+
+// Baja el archivo de los servidores de Meta y lo guarda en Supabase Storage
+async function descargarYGuardarArchivo(mediaId, numeroCliente, mimeDeclarado, nombreOriginal) {
+  if (!mediaId) throw new Error("El mensaje no trae el id del archivo");
+
+  const cabeceras = { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` };
+
+  const resInfo = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+    headers: cabeceras,
+  });
+  const info = await resInfo.json();
+  if (!resInfo.ok || !info.url) {
+    throw new Error("Meta no devolvió el link del archivo: " + JSON.stringify(info));
+  }
+
+  const resArchivo = await fetch(info.url, { headers: cabeceras });
+  if (!resArchivo.ok) {
+    throw new Error("No se pudo bajar el archivo (código " + resArchivo.status + ")");
+  }
+  const contenido = Buffer.from(await resArchivo.arrayBuffer());
+
+  const mimeCompleto = info.mime_type || mimeDeclarado || resArchivo.headers.get("content-type") || "";
+  const mime = mimeCompleto.split(";")[0].trim().toLowerCase() || "application/octet-stream";
+  const extension = extensionDeMime(mime, nombreOriginal);
+  const ruta = `entrantes/${numeroCliente}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+
+  const { error } = await supabase.storage
+    .from(BUCKET_MEDIA)
+    .upload(ruta, contenido, { contentType: mime, upsert: false });
+  if (error) throw new Error("No se pudo guardar en Storage: " + error.message);
+
+  const { data } = supabase.storage.from(BUCKET_MEDIA).getPublicUrl(ruta);
+  return { url: data.publicUrl, mime };
+}
+
+async function obtenerOCrearHilo(numeroCliente) {
+  const { data: ultimoMensaje } = await supabase
+    .from("whatsapp_conversaciones")
+    .select("hilo_id, created_at")
+    .eq("numero_cliente", numeroCliente)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (ultimoMensaje) {
+    const fechaUltimoMensaje = new Date(ultimoMensaje.created_at).toLocaleDateString(
+      "es-AR",
+      { timeZone: "America/Argentina/Buenos_Aires" }
+    );
+    const fechaHoy = new Date().toLocaleDateString("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+    });
+
+    if (fechaUltimoMensaje === fechaHoy) {
+      return ultimoMensaje.hilo_id; // mismo día, seguimos la misma conversación
+    }
+  }
+
+  // Cambió el día: arranca un hilo nuevo
+  const nuevoHiloId = crypto.randomUUID();
+  return nuevoHiloId;
+}
+
+async function guardarMensaje(numeroCliente, hiloId, rol, mensaje, extra = {}) {
+  await supabase.from("whatsapp_conversaciones").insert({
+    numero_cliente: numeroCliente,
+    hilo_id: hiloId,
+    rol,
+    mensaje,
+    ...extra,
+  });
+}
+
+async function estaBotPausado(numeroCliente) {
+  const { data } = await supabase
+    .from("whatsapp_clientes")
+    .select("bot_pausado")
+    .eq("numero_cliente", numeroCliente)
+    .maybeSingle();
+
+  return data?.bot_pausado || false;
+}
+
+async function asegurarCliente(numeroCliente) {
+  const { data } = await supabase
+    .from("whatsapp_clientes")
+    .select("id")
+    .eq("numero_cliente", numeroCliente)
+    .maybeSingle();
+
+  if (!data) {
+    await supabase
+      .from("whatsapp_clientes")
+      .insert({ numero_cliente: numeroCliente });
+  }
+}
+
+async function avisarNuevoMensaje(numeroCliente, texto) {
+  const { data: suscripciones } = await supabase
+    .from("push_suscripciones")
+    .select("id, endpoint, p256dh, auth");
+
+  if (!suscripciones || suscripciones.length === 0) return;
+
+  const payload = JSON.stringify({
+    titulo: "Nuevo mensaje de WhatsApp",
+    cuerpo: texto.length > 100 ? texto.slice(0, 100) + "..." : texto,
+    url: `/admin/conversaciones`,
+  });
+
+  await Promise.all(
+    suscripciones.map(async (s) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: s.endpoint,
+            keys: { p256dh: s.p256dh, auth: s.auth },
+          },
+          payload
+        );
+      } catch (error) {
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          // La suscripción ya no existe (se desinstaló la app, etc.)
+          await supabase.from("push_suscripciones").delete().eq("id", s.id);
+        } else {
+          console.error("Error al mandar notificación push:", error.message);
+        }
+      }
+    })
+  );
+}
+
+async function obtenerHistorialDelHilo(hiloId) {
+  const { data } = await supabase
+    .from("whatsapp_conversaciones")
+    .select("rol, mensaje")
+    .eq("hilo_id", hiloId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const historial = (data || []).reverse();
+
+  // La API exige que la conversación arranque con un mensaje del cliente
+  while (historial.length > 0 && historial[0].rol !== "user") {
+    historial.shift();
+  }
+
+  return historial;
+}
+
+// Solo los productos marcados como visibles (el bot no ofrece productos ocultos)
+async function obtenerProductos() {
+  const { data } = await supabase
+    .from("productos")
+    .select("nombre, descripcion, precio")
+    .eq("visible", true)
+    .order("nombre", { ascending: true });
+
+  return data || [];
+}
+
+async function preguntarleAClaude(historial) {
+  const productos = await obtenerProductos();
+  const listaDeProductos = productos
+    .map((p) => `- ${p.nombre}: $${p.precio}${p.descripcion ? " — " + p.descripcion : ""}`)
+    .join("\n");
+  const contextoDelNegocio = `
+Sos el asistente virtual de Dimedeti Ambos, un negocio de venta de ambos médicos y sanitarios.
+Hablale a los clientes en español rioplatense, con un tono cercano y usando algún emoji de vez en cuando.
+Si el cliente es medianamente amable, usá su nombre si lo sabés.
+- El email al cual deben comunicarse si preguntan es negocios@dimedetiambos.com 
+
+SOBRE EL NEGOCIO:
+- Rubro: ambos médicos / sanitarios (chaquetas, pantalones, ambos completos, guardapolvos)
+- Opera 100% online hace más de 5 años, no tiene local físico
+- Atiende (respondé) en cualquier momento, todos los días, incluidos feriados
+- No vende calzado ni ropa de trabajo de otros rubros, solo lo que está en su web
+
+PRODUCTOS Y TALLES:
+- Categorías: ambos médicos, chaquetas, pantalones, guardapolvos
+- Tela "superfit" con spandex: cómoda y resistente, para uso diario y jornadas laborales
+- Los clientes eligen el talle comparando sus medidas con la tabla de talles del sitio (no hay local para probarse)
+- Se pueden combinar talles entre prendas de un mismo pedido (ej: chaqueta de un talle, pantalón de otro)
+- Se hacen talles especiales o a medida a criterio; si la modificación es grande respecto al ambo original, se cobra un adicional
+- Estos son los productos y precios actuales (siempre correctos, tomados directo de la base de datos):
+${listaDeProductos}
+- Si preguntan por un producto que no está en esta lista, avisá que todavía no está cargado en el sistema y que pueden ver el catálogo completo en https://www.dimedetiambos.com.ar
+ENVÍOS:
+- Envían a todo el país
+- Carriers disponibles: Andreani, Correo Argentino, OCA y Urbano
+- El cliente elige el tipo de envío en el selector: a sucursal, a domicilio, o exprés
+- El costo de envío varía según cantidad de prendas y zona; hay varias opciones a distinto precio para elegir
+- Tiempos: la confección tarda entre 4 y 7 días hábiles con demanda baja, o entre 7 y 12 días hábiles con mucha demanda o pedidos de varias prendas (se confecciona a pedido, no hay stock fijo). Una vez despachado, el envío tarda entre 2 y 6 días hábiles según la zona
+
+PAGOS:
+- Por Mercado Pago: dinero en cuenta, tarjeta de crédito, tarjeta de débito, cuotas sin tarjeta, etc.
+- Próximamente van a sumar transferencia bancaria y tarjeta de crédito/débito fuera de Mercado Pago
+- Pagando por transferencia hay 5% de descuento; el cliente debe mandar el comprobante por este mismo WhatsApp
+
+CAMBIOS Y DEVOLUCIONES:
+- No se hacen devoluciones de dinero, solo cambios
+- El cliente tiene 7 días desde que recibe el pedido para pedir el cambio
+- La prenda debe estar sin usar (no hace falta conservar la etiqueta)
+- Se acepta cambio por talle incorrecto o por falla de fabricación
+- Si es por falla de fabricación, el envío del cambio lo paga el negocio. Si es por talle, lo paga el cliente
+
+CUÁNDO DERIVAR A UNA PERSONA:
+Si te preguntan sobre un reclamo, un problema con un pedido ya hecho, o cualquier cosa muy específica que no sepas responder con esta información, avisale al cliente que una persona del local va a seguir la conversación, y no inventes una respuesta.
+`;
+
+  const mensajes = historial.map((m) => ({
+    role: m.rol === "model" || m.rol === "admin" ? "assistant" : "user",
+    content: m.mensaje,
+  }));
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "prompt-caching-2024-07-31",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 500,
+      system: [
+        {
+          type: "text",
+          text: contextoDelNegocio,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      messages: mensajes,
+    }),
+  });
+
+  const data = await res.json();
+  console.log("Respuesta de Claude:", JSON.stringify(data));
+
+  return (
+    data.content?.[0]?.text ||
+    "Disculpá, no pude procesar tu consulta en este momento."
+  );
+}
+
+async function mandarMensajeWhatsApp(numeroDestino, texto) {
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_ID}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: numeroDestino,
+        type: "text",
+        text: { body: texto },
+      }),
+    }
+  );
+
+  const data = await res.json();
+  console.log("Respuesta de WhatsApp API:", JSON.stringify(data));
+
+  if (!res.ok) {
+    console.error("ERROR al mandar mensaje de WhatsApp:", JSON.stringify(data));
+  }
+
+  return data;
+}
+
+===== src\app\BannerCarrusel.js =====
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
+
+const INTERVALO = 5000 // milisegundos entre tarjetas
+
+// "confeccion" llega desde page.js con textoConfeccion(), así los días
+// siempre coinciden con los del cartel verde de arriba.
+export default function BannerCarrusel({ confeccion }) {
+  // Para sumar o cambiar tarjetas, editá solo esta lista.
+  // tipo 'imagen': usa un archivo de /public. tipo 'texto': título, subtítulo y detalle.
+  // Si ponés href (por ejemplo '/producto/4'), la tarjeta lleva a esa página.
+  const TARJETAS = [
+    {
+      tipo: 'imagen',
+      src: '/banner-envio-gratis.png',
+      alt: 'Envío gratis en compras desde $150.000 a todo el país',
+      href: null,
+    },
+    {
+      tipo: 'imagen',
+      src: '/banner-descuento.png',
+      alt: '5% de descuento pagando por transferencia',
+      href: null,
+    },
+    {
+      tipo: 'texto',
+      titulo: 'Confección a pedido',
+      subtitulo: 'Elegí tu talle y color, y lo hacemos para vos',
+      detalle: `${confeccion} · Envíos a todo el país`,
+      href: null,
+    },
+  ]
+
+  const total = TARJETAS.length
+  const [actual, setActual] = useState(0)
+  const [pausado, setPausado] = useState(false)
+  const x0 = useRef(null)
+
+  function ir(n) {
+    setActual((n + total) % total)
+  }
+
+  // Autoplay: se pausa con el mouse o el dedo, y se reinicia al cambiar de tarjeta
+  useEffect(() => {
+    if (pausado || total < 2) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const id = setTimeout(() => setActual((a) => (a + 1) % total), INTERVALO)
+    return () => clearTimeout(id)
+  }, [pausado, actual, total])
+
+  function onTouchStart(e) {
+    x0.current = e.touches[0].clientX
+    setPausado(true)
+  }
+
+  function onTouchEnd(e) {
+    if (x0.current !== null) {
+      const dx = e.changedTouches[0].clientX - x0.current
+      if (Math.abs(dx) > 40) ir(actual + (dx < 0 ? 1 : -1))
+    }
+    x0.current = null
+    setPausado(false)
+  }
+
+  function contenido(t, i) {
+    if (t.tipo === 'imagen') {
+      return (
+        <Image
+          src={t.src}
+          alt={t.alt}
+          width={1636}
+          height={900}
+          priority={i === 0}
+          className="block h-full w-full object-cover"
+        />
+      )
+    }
+    return (
+      <div className="relative flex h-full flex-col justify-center bg-[#FAF6F0] px-[8%]">
+        <h2 className="font-serif text-[clamp(26px,6vw,80px)] leading-none tracking-tight text-[#2E2A26]">
+          {t.titulo}
+        </h2>
+        <p className="mt-2 text-[clamp(14px,2.4vw,32px)] text-[#2E2A26]">
+          {t.subtitulo}
+        </p>
+        <p className="mt-3 text-[clamp(11px,1.4vw,18px)] font-medium tracking-wide text-[#2F6B63]">
+          {t.detalle}
+        </p>
+        <div
+          aria-hidden="true"
+          className="absolute right-[8%] top-1/2 aspect-square w-[clamp(60px,12vw,180px)] -translate-y-1/2 rounded-full bg-[#2F6B63] opacity-10"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <section
+      aria-roledescription="carrusel"
+      aria-label="Promociones"
+      className="mx-auto w-full max-w-[1200px] px-6 py-8 md:px-10"
+    >
+      <div
+        className="relative overflow-hidden rounded-2xl border border-[#E4DCCF] bg-[#FAF6F0]"
+        onMouseEnter={() => setPausado(true)}
+        onMouseLeave={() => setPausado(false)}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
+        <div
+          className="flex transition-transform duration-500 ease-out motion-reduce:transition-none"
+          style={{ transform: `translateX(-${actual * 100}%)` }}
+        >
+          {TARJETAS.map((t, i) => (
+            <div
+              key={i}
+              aria-hidden={i !== actual}
+              className="aspect-[1636/900] w-full shrink-0"
+            >
+              {t.href ? (
+                <Link
+                  href={t.href}
+                  tabIndex={i === actual ? 0 : -1}
+                  className="block h-full"
+                >
+                  {contenido(t, i)}
+                </Link>
+              ) : (
+                contenido(t, i)
+              )}
+            </div>
+          ))}
+        </div>
+
+        {total > 1 && (
+          <>
+            <button
+              onClick={() => ir(actual - 1)}
+              aria-label="Tarjeta anterior"
+              className="absolute left-3 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-2xl leading-none text-[#2E2A26] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2F6B63] sm:flex"
+            >
+              ‹
+            </button>
+            <button
+              onClick={() => ir(actual + 1)}
+              aria-label="Tarjeta siguiente"
+              className="absolute right-3 top-1/2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-2xl leading-none text-[#2E2A26] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2F6B63] sm:flex"
+            >
+              ›
+            </button>
+            <div className="absolute inset-x-0 bottom-3 flex justify-center gap-2">
+              {TARJETAS.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => ir(i)}
+                  aria-label={`Ir a la tarjeta ${i + 1}`}
+                  aria-current={i === actual}
+                  className={`h-2 rounded-full transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2F6B63] ${
+                    i === actual ? 'w-6 bg-[#2F6B63]' : 'w-2 bg-[#CFC7B8]'
+                  }`}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+===== src\app\CarritoIcono.js =====
+'use client'
+
+import Link from 'next/link'
+import { createPortal } from 'react-dom'
+import { useCarrito } from '@/lib/carrito'
+import SelectorEnvio from './checkout/SelectorEnvio'
+
+export default function CarritoIcono() {
+  const {
+    items,
+    cantidadTotal,
+    totalProductos,
+    costoEnvio,
+    envioGratis,
+    total,
+    zonaEnvio,
+    quitarDelCarrito,
+    actualizarCantidad,
+    vaciarCarrito,
+    panelAbierto,
+    abrirPanel,
+    cerrarPanel,
+  } = useCarrito()
+
+  return (
+    <>
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={abrirPanel}
+          style={{
+            padding: '10px 16px',
+            border: '1px solid #ccc',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            backgroundColor: '#fff',
+            fontSize: '15px',
+          }}
+        >
+          🛒 {cantidadTotal}
+        </button>
+      </div>
+
+      {panelAbierto &&
+        createPortal(
+          <>
+            {/* Fondo oscuro: al tocarlo, cierra el panel */}
+            <div
+              onClick={cerrarPanel}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100dvh',
+                backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                zIndex: 1500,
+              }}
+            />
+
+            {/* Panel lateral del carrito */}
+            <div
+              style={{
+                position: 'fixed',
+                top: 0,
+                right: 0,
+                height: '100dvh',
+                width: '340px',
+                maxWidth: '90vw',
+                backgroundColor: 'white',
+                boxShadow: '-4px 0 16px rgba(0,0,0,0.15)',
+                padding: '20px',
+                zIndex: 1501,
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>Tu carrito</h3>
+                <button
+                  onClick={cerrarPanel}
+                  style={{
+                    border: 'none',
+                    background: '#f5f5f5',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    fontSize: '18px',
+                    cursor: 'pointer',
+                    color: '#333',
+                  }}
+                  title="Cerrar"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {items.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (confirm('¿Vaciar todo el carrito?')) {
+                      vaciarCarrito()
+                    }
+                  }}
+                  style={{
+                    marginTop: '10px',
+                    alignSelf: 'flex-start',
+                    border: 'none',
+                    background: 'none',
+                    color: '#888',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    padding: 0,
+                  }}
+                >
+                  Vaciar carrito
+                </button>
+              )}
+
+              {items.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#888', marginTop: '30px' }}>
+                  Tu carrito está vacío
+                </p>
+              ) : (
+                <>
+                  <div style={{ marginTop: '16px' }}>
+                    {items.map((item) => (
+                      <div
+                        key={`${item.id}-${item.variante_id || ''}`}
+                        style={{
+                          padding: '12px 0',
+                          borderBottom: '1px solid #eee',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <p style={{ margin: 0, fontWeight: 'bold', fontSize: '14px' }}>
+                              {item.nombre} {item.color ? `(${item.color})` : ''}
+                            </p>
+                            {item.talle && (
+                              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#888' }}>
+                                Talle: {item.talle}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => quitarDelCarrito(item.id, item.variante_id)}
+                            style={{
+                              border: 'none',
+                              background: 'none',
+                              color: '#dc2626',
+                              cursor: 'pointer',
+                              fontSize: '16px',
+                              padding: '2px 6px',
+                            }}
+                            title="Quitar"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+                            <button
+                              onClick={() => actualizarCantidad(item.id, item.variante_id, item.cantidad - 1)}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                fontSize: '15px',
+                                border: '1px solid #ccc',
+                                borderRadius: '6px 0 0 6px',
+                                backgroundColor: '#fff',
+                                cursor: 'pointer',
+                                color: '#333',
+                              }}
+                            >
+                              −
+                            </button>
+                            <div
+                              style={{
+                                width: '34px',
+                                height: '28px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                border: '1px solid #ccc',
+                                borderLeft: 'none',
+                                borderRight: 'none',
+                                fontSize: '13px',
+                                fontWeight: '600',
+                              }}
+                            >
+                              {item.cantidad}
+                            </div>
+                            <button
+                              onClick={() => actualizarCantidad(item.id, item.variante_id, item.cantidad + 1)}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                fontSize: '15px',
+                                border: '1px solid #ccc',
+                                borderRadius: '0 6px 6px 0',
+                                backgroundColor: '#fff',
+                                cursor: 'pointer',
+                                color: '#333',
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>
+                            ${item.cantidad * item.precio}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #ddd' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px' }}>
+                      <span>Subtotal</span>
+                      <span>${totalProductos}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px', color: '#666' }}>
+                      <span>
+                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona'
+                          ? 'Costo de envío'
+                          : `Envío ${zonaEnvio ? `(${zonaEnvio.nombre})` : '(sin elegir)'}`}
+                      </span>
+                      <span>
+                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona' ? (
+                          <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
+                        ) : (
+                          `$${costoEnvio}`
+                        )}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '18px', marginTop: '8px' }}>
+                      <span>Total</span>
+                      <span>${total}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '14px' }}>
+                    <SelectorEnvio />
+                  </div>
+
+                  <Link
+                    href="/checkout"
+                    style={{
+                      display: 'block',
+                      marginTop: 'auto',
+                      position: 'sticky',
+                      bottom: 0,
+                      backgroundColor: 'white',
+                      paddingTop: '10px',
+                      paddingBottom: '10px',
+                      zIndex: 1,
+                    }}
+                  >
+                    <button
+                      onClick={cerrarPanel}
+                      style={{
+                        width: '100%',
+                        marginTop: '16px',
+                        padding: '12px',
+                        backgroundColor: '#009ee3',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '15px',
+                      }}
+                    >
+                      Finalizar compra
+                    </button>
+                  </Link>
+                </>
+              )}
+            </div>
+          </>,
+          document.body
+        )}
+    </>
+  )
+}
+
+===== src\app\CartelSuscripcion.js =====
+// DESTINO: src/app/CartelSuscripcion.js  (archivo NUEVO)
+'use client'
+
+import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
+import { useCarrito } from '@/lib/carrito'
+import BotonGoogle from './BotonGoogle'
+
+const CLAVE_CERRADO = 'dimedetiambos_cartel_suscripcion_cerrado'
+
+export default function CartelSuscripcion() {
+  const { usuario, sesionLista } = useCarrito()
+  const pathname = usePathname()
+
+  // Arranca "cerrado" hasta confirmar que la persona no lo cerró antes
+  const [cerrado, setCerrado] = useState(true)
+  const [demoraCumplida, setDemoraCumplida] = useState(false)
+
+  useEffect(() => {
+    try {
+      setCerrado(Boolean(localStorage.getItem(CLAVE_CERRADO)))
+    } catch {
+      setCerrado(false)
+    }
+    const timer = setTimeout(() => setDemoraCumplida(true), 3000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  function cerrar() {
+    try {
+      localStorage.setItem(CLAVE_CERRADO, '1')
+    } catch {}
+    setCerrado(true)
+  }
+
+  const enRutaExcluida =
+    pathname?.startsWith('/admin') || pathname?.startsWith('/checkout') || pathname?.startsWith('/pago')
+
+  if (!sesionLista || usuario || cerrado || !demoraCumplida || enRutaExcluida) return null
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Descuento de bienvenida"
+      style={{
+        position: 'fixed',
+        left: '16px',
+        bottom: '16px',
+        zIndex: 60,
+        width: 'min(360px, calc(100vw - 32px))',
+        background: '#fff',
+        border: '1px solid #E4DCCF',
+        borderRadius: '12px',
+        boxShadow: '0 10px 30px rgba(0,0,0,.18)',
+        padding: '18px',
+      }}
+    >
+      <button
+        type="button"
+        onClick={cerrar}
+        aria-label="Cerrar"
+        style={{
+          position: 'absolute',
+          top: '8px',
+          right: '12px',
+          border: 0,
+          background: 'none',
+          fontSize: '22px',
+          cursor: 'pointer',
+          color: '#8A8378',
+        }}
+      >
+        ×
+      </button>
+      <p style={{ margin: '0 0 6px', fontWeight: 700, fontSize: '16px', color: '#2E2A26', paddingRight: '18px' }}>
+        Ingresá con Google y llevate 5% de descuento en tu primera compra
+      </p>
+      <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#8A8378' }}>
+        Al ingresar aceptás recibir novedades por email. Podés darte de baja cuando quieras.
+      </p>
+      <BotonGoogle />
+    </div>
+  )
+}
+
+===== src\app\checkout\page.js =====
+// DESTINO: src/app/checkout/page.js  (reemplaza el archivo actual)
+'use client'
+
+import Script from 'next/script'
+
+import { useState, useEffect, useRef } from 'react'
+import { useCarrito } from '@/lib/carrito'
+import { useRouter } from 'next/navigation'
+import SelectorEnvio from './SelectorEnvio'
+import BrandBrickMP from './BrandBrickMP'
+import BotonGoogle from '../BotonGoogle'
+import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
+import { textoConfeccion } from '@/lib/configConfeccion'
+import { ID_ENVIO_GRATIS_AUTO, UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import { etiquetaDescuento } from '@/lib/configCupones'
+import { track } from '@/lib/fbq'
+
+export default function Checkout() {
+  const {
+    items,
+    totalProductos,
+    envioGratis,
+    zonaEnvio,
+    cupon,
+    cuponAplica,
+    descuentoCupon,
+    aplicarCupon,
+    quitarCupon,
+    pagar,
+    vaciarCarrito,
+    usuario,
+    cerrarSesion,
+    cabecerasConSesion,
+  } = useCarrito()
+  const router = useRouter()
+
+  const [datos, setDatos] = useState({
+    nombre: '',
+    email: '',
+    dni: '',
+    telefono: '',
+    calle: '',
+    numero: '',
+    pisoDepto: '',
+    ciudad: '',
+    codigoPostal: '',
+    notas: '',
+  })
+
+  const [enviando, setEnviando] = useState(false)
+  const [metodoPago, setMetodoPago] = useState('mercadopago')
+
+  // Campo de cupón
+  const [codigoCupon, setCodigoCupon] = useState('')
+  const [mensajeCupon, setMensajeCupon] = useState('')
+  const [aplicandoCupon, setAplicandoCupon] = useState(false)
+  const [cuponPideLogin, setCuponPideLogin] = useState(false)
+
+  // META PIXEL: InitiateCheckout (una sola vez). Los hooks van siempre antes de cualquier return.
+  const checkoutIniciado = useRef(false)
+
+  useEffect(() => {
+    if (checkoutIniciado.current || items.length === 0) return
+    checkoutIniciado.current = true
+    track('InitiateCheckout', {
+      value: totalProductos,
+      currency: 'ARS',
+      content_type: 'product',
+      num_items: items.reduce((a, i) => a + i.cantidad, 0),
+      contents: items.map((i) => ({
+        id: String(i.id),
+        quantity: i.cantidad,
+        item_price: i.precio,
+      })),
+    })
+  }, [items, totalProductos])
+
+  const esRetiro = zonaEnvio?.nombre === 'Retiro en persona'
+  const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
+  const conTransferencia = metodoPago === 'transferencia'
+
+  // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
+  // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
+  const hayCupon = cuponAplica && descuentoCupon > 0
+  const cuponEnUso = hayCupon
+  const descuentoCuponEfectivo = cuponEnUso ? descuentoCupon : 0
+  const subtotalEfectivo = totalProductos - descuentoCuponEfectivo
+
+  const montoTransferencia = Math.round(subtotalEfectivo * DESCUENTO_TRANSFERENCIA)
+  const transferenciaGana = conTransferencia
+  const descuentoTransferenciaEfectivo = conTransferencia ? montoTransferencia : 0
+  const envioGratisEfectivo = subtotalEfectivo >= UMBRAL_ENVIO_GRATIS
+  const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - subtotalEfectivo)
+  const costoEnvioEfectivo = calcularCostoEnvio(subtotalEfectivo, zonaEnvio)
+  const totalAPagar = subtotalEfectivo - descuentoTransferenciaEfectivo + costoEnvioEfectivo
+
+  function handleChange(e) {
+    setDatos({ ...datos, [e.target.name]: e.target.value })
+  }
+
+  async function handleAplicarCupon() {
+    setMensajeCupon('')
+    setCuponPideLogin(false)
+    setAplicandoCupon(true)
+    const resultado = await aplicarCupon(codigoCupon)
+    setAplicandoCupon(false)
+
+    if (!resultado.ok) {
+      setMensajeCupon(resultado.error)
+      if (resultado.loginRequerido) setCuponPideLogin(true)
+      return
+    }
+    setCodigoCupon('')
+  }
+
+  function validar() {
+    if (cupon && !usuario) {
+      return 'Para usar el cupón ingresá con Google (o quitá el cupón para seguir sin cuenta).'
+    }
+    if (!datos.nombre.trim()) return 'Ingresá tu nombre completo'
+    if (!datos.email.trim()) return 'Ingresá tu email'
+    if (!datos.dni.trim()) return 'Ingresá tu DNI'
+    if (!datos.telefono.trim()) return 'Ingresá tu teléfono'
+    if (envioGratis && !esRetiro) {
+      // Con envío gratis la empresa se elige sola al cargar el código postal
+      if (zonaEnvio?.id !== ID_ENVIO_GRATIS_AUTO) {
+        return 'Todavía no pudimos confirmar tu envío gratis. Revisá tu código postal.'
+      }
+    } else if (!zonaEnvio) {
+      return 'Elegí una zona de envío'
+    }
+    if (!esRetiro) {
+      if (!datos.calle.trim() || !datos.numero.trim() || !datos.ciudad.trim() || !datos.codigoPostal.trim()) {
+        return 'Completá la dirección de envío completa'
+      }
+    }
+    return null
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+
+    if (items.length === 0) {
+      alert('Tu carrito está vacío')
+      return
+    }
+
+    const error = validar()
+    if (error) {
+      alert(error)
+      return
+    }
+
+    setEnviando(true)
+    try {
+      const token = await new Promise((resolve, reject) => {
+        window.grecaptcha.ready(() => {
+          window.grecaptcha
+            .execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'checkout' })
+            .then(resolve)
+            .catch(reject)
+        })
+      })
+
+      if (conTransferencia) {
+        const res = await fetch('/api/crear-pedido-transferencia', {
+          method: 'POST',
+          headers: await cabecerasConSesion(),
+          body: JSON.stringify({
+            items,
+            zonaEnvio,
+            datosCliente: datos,
+            recaptchaToken: token,
+            cuponCodigo: cupon?.codigo || null,
+          }),
+        })
+        const data = await res.json()
+
+        if (!res.ok) {
+          // Si el cupón ya no sirve (venció, se agotó o ya lo usaste), se saca para que el cliente vea el precio real
+          if (data.cupon_invalido) quitarCupon()
+          alert(data.error || 'Hubo un error al procesar tu pedido. Probá de nuevo.')
+          setEnviando(false)
+          return
+        }
+
+        // La pantalla siguiente lee estos datos para mostrar el monto y el número de pedido
+        sessionStorage.setItem(
+          'pedido_transferencia',
+          JSON.stringify({ id: data.pedido_id, total: data.total, descuento: data.descuento })
+        )
+
+        // META PIXEL: Purchase por transferencia
+        track(
+          'Purchase',
+          {
+            value: Number(data.total),
+            currency: 'ARS',
+            content_type: 'product',
+            num_items: items.reduce((a, i) => a + i.cantidad, 0),
+            contents: items.map((i) => ({
+              id: String(i.id),
+              quantity: i.cantidad,
+              item_price: i.precio,
+            })),
+          },
+          `purchase_${data.pedido_id}`
+        )
+
+        vaciarCarrito()
+        router.push('/pago-transferencia')
+        return
+      }
+
+      await pagar(datos, token)
+    } catch (err) {
+      if (err?.cuponInvalido) {
+        quitarCupon()
+        alert(err.message)
+      } else {
+        alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
+      }
+      setEnviando(false)
+    }
+  }
+
+  if (items.length === 0) {
+    return (
+      <main style={{ padding: '40px', textAlign: 'center' }}>
+        <h1>Tu carrito está vacío</h1>
+        <button onClick={() => router.push('/')} style={{ marginTop: '20px', padding: '10px 20px', cursor: 'pointer' }}>
+          Volver a la tienda
+        </button>
+      </main>
+    )
+  }
+
+  return (
+    <main style={{ padding: 'clamp(16px, 5vw, 40px)', maxWidth: '600px', margin: '0 auto' }}>
+      <Script src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`} />
+      <h1>Finalizar compra</h1>
+      <div style={{ backgroundColor: '#f7f7f7', padding: '16px', borderRadius: '8px', marginTop: '20px' }}>
+        <h3>Resumen del pedido</h3>
+        {items.map((item) => (
+          <p key={`${item.id}-${item.variante_id || ''}`}>
+            {item.nombre} {item.color ? `(${item.color})` : ''} x{item.cantidad} — ${item.precio * item.cantidad}
+          </p>
+        ))}
+        {cuponEnUso && (
+          <p style={{ color: '#15803d' }}>
+            Cupón {cupon.codigo} ({etiquetaDescuento(cupon)}): −${descuentoCuponEfectivo}
+          </p>
+        )}
+        {hayCupon && conTransferencia && (
+          <p style={{ fontSize: '14px', color: '#15803d' }}>
+            ¡Tu cupón {cupon.codigo} se suma al descuento por transferencia!
+          </p>
+        )}
+        {envioGratisEfectivo && !esRetiro ? (
+          <p>
+            Costo de envío: <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
+          </p>
+        ) : (
+          <p>
+            Envío ({zonaEnvio?.nombre || 'sin elegir'}): ${costoEnvioEfectivo}
+          </p>
+        )}
+        {!esRetiro && !envioGratisEfectivo && (
+          <p style={{ fontSize: '14px', color: '#15803d' }}>
+            🚚 Sumá ${faltaParaEnvioGratis} más en productos y el envío es gratis.
+          </p>
+        )}
+        {transferenciaGana && (
+          <p style={{ color: '#15803d' }}>
+            Descuento por transferencia ({porcentajeDescuento}%): −${descuentoTransferenciaEfectivo}
+          </p>
+        )}
+        <p style={{ fontSize: '14px', color: '#555' }}>
+          🧵 Tiempo de confección estimado: {textoConfeccion()}.
+          {esRetiro ? ' Te avisamos cuando esté listo para retirar.' : ''}
+        </p>
+        <p style={{ fontWeight: 'bold', fontSize: '18px' }}>Total: ${totalAPagar}</p>
+      </div>
+
+      {/* Ingreso con Google: hace falta para usar cupones */}
+      <div style={{ marginTop: '16px' }}>
+        {!usuario ? (
+          <div
+            style={{
+              padding: '14px',
+              border: '1px solid #E4DCCF',
+              backgroundColor: '#FAF6F0',
+              borderRadius: '8px',
+            }}
+          >
+            <p style={{ margin: '0 0 10px', fontSize: '14px', color: '#2E2A26' }}>
+              🎁 Ingresá con Google para usar cupones y llevarte <strong>5% de descuento en tu primera compra</strong>.
+              Podés comprar sin cuenta, pero sin cupón.
+            </p>
+            <BotonGoogle />
+            <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#8A8378' }}>
+              Al ingresar aceptás recibir novedades por email. Podés darte de baja cuando quieras.
+            </p>
+          </div>
+        ) : (
+          <p style={{ margin: 0, fontSize: '13px', color: '#555' }}>
+            Ingresaste como <strong>{usuario.email}</strong> ·{' '}
+            <button
+              type="button"
+              onClick={cerrarSesion}
+              style={{ border: 'none', background: 'none', color: '#2F6B63', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+            >
+              Salir
+            </button>
+          </p>
+        )}
+      </div>
+
+      <div style={{ marginTop: '16px' }}>
+        {cupon ? (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '12px',
+              border: '1px solid #bbf7d0',
+              backgroundColor: '#f0fdf4',
+              borderRadius: '8px',
+            }}
+          >
+            <span style={{ fontSize: '14px', color: '#15803d' }}>
+              🎟️ Cupón <strong>{cupon.codigo}</strong> ({etiquetaDescuento(cupon)})
+              {!cuponAplica && (
+                <>
+                  <br />
+                  <small style={{ color: '#a16207' }}>
+                    Se aplica con una compra mínima de ${Number(cupon.compra_minima).toLocaleString('es-AR')} en productos.
+                  </small>
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={quitarCupon}
+              style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '6px', background: '#fff', cursor: 'pointer' }}
+            >
+              Quitar
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              value={codigoCupon}
+              onChange={(e) => setCodigoCupon(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  if (codigoCupon.trim() && !aplicandoCupon) handleAplicarCupon()
+                }
+              }}
+              placeholder="¿Tenés un cupón?"
+              autoCapitalize="characters"
+              style={{ ...inputStyle, marginTop: 0, flex: 1 }}
+            />
+            <button
+              type="button"
+              onClick={handleAplicarCupon}
+              disabled={aplicandoCupon || !codigoCupon.trim()}
+              style={{
+                padding: '0 18px',
+                border: 'none',
+                borderRadius: '6px',
+                color: 'white',
+                backgroundColor: aplicandoCupon || !codigoCupon.trim() ? '#ccc' : '#2F6B63',
+                cursor: aplicandoCupon || !codigoCupon.trim() ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {aplicandoCupon ? '...' : 'Aplicar'}
+            </button>
+          </div>
+        )}
+        {mensajeCupon && <p style={{ margin: '8px 0 0', fontSize: '14px', color: '#b91c1c' }}>{mensajeCupon}</p>}
+        {cuponPideLogin && !usuario && (
+          <div style={{ marginTop: '10px' }}>
+            <BotonGoogle texto="Ingresar con Google para usar el cupón" />
+          </div>
+        )}
+      </div>
+
+      <SelectorEnvio codigoPostal={datos.codigoPostal} />
+
+      <form onSubmit={handleSubmit} style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <label>
+          Nombre completo *
+          <input name="nombre" value={datos.nombre} onChange={handleChange} style={inputStyle} />
+        </label>
+
+        <label>
+          Email *
+          <input name="email" type="email" value={datos.email} onChange={handleChange} style={inputStyle} />
+        </label>
+
+        <label>
+          DNI *
+          <input name="dni" value={datos.dni} onChange={handleChange} style={inputStyle} />
+        </label>
+
+        <label>
+          Teléfono *
+          <input name="telefono" value={datos.telefono} onChange={handleChange} style={inputStyle} />
+        </label>
+
+        {!esRetiro && (
+          <>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <label style={{ flex: 2, minWidth: '140px' }}>
+                Calle *
+                <input name="calle" value={datos.calle} onChange={handleChange} style={inputStyle} />
+              </label>
+              <label style={{ flex: 1, minWidth: '100px' }}>
+                Número *
+                <input name="numero" value={datos.numero} onChange={handleChange} style={inputStyle} />
+              </label>
+            </div>
+            <label>
+              Piso / Depto (opcional)
+              <input name="pisoDepto" value={datos.pisoDepto} onChange={handleChange} style={inputStyle} placeholder="Ej: 3° B" />
+            </label>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <label style={{ flex: 1, minWidth: '140px' }}>
+                Ciudad *
+                <input name="ciudad" value={datos.ciudad} onChange={handleChange} style={inputStyle} />
+              </label>
+              <label style={{ flex: 1, minWidth: '140px' }}>
+                Código Postal *
+                <input name="codigoPostal" value={datos.codigoPostal} onChange={handleChange} style={inputStyle} />
+              </label>
+            </div>
+          </>
+        )}
+
+        <label>
+          Notas adicionales (opcional)
+          <textarea name="notas" value={datos.notas} onChange={handleChange} style={{ ...inputStyle, minHeight: '60px' }} />
+        </label>
+
+        <div style={{ marginTop: '8px' }}>
+          <p style={{ margin: '0 0 8px', fontWeight: 'bold' }}>Forma de pago</p>
+
+          <label style={opcionPagoStyle(metodoPago === 'mercadopago')}>
+            <input
+              type="radio"
+              name="metodoPago"
+              checked={metodoPago === 'mercadopago'}
+              onChange={() => setMetodoPago('mercadopago')}
+            />
+            <span>
+              <strong>Mercado Pago</strong>
+              <br />
+              <small style={{ color: '#666' }}>Tarjeta, dinero en cuenta, cuotas y más</small>
+            </span>
+          </label>
+
+          <label style={{ ...opcionPagoStyle(conTransferencia), marginTop: '8px' }}>
+            <input
+              type="radio"
+              name="metodoPago"
+              checked={conTransferencia}
+              onChange={() => setMetodoPago('transferencia')}
+            />
+            <span>
+              <strong>Transferencia bancaria</strong>{' '}
+              <span style={{ color: '#15803d', fontWeight: 'bold' }}>{porcentajeDescuento}% de descuento</span>
+              <br />
+              <small style={{ color: '#666' }}>
+                Ahorrás ${montoTransferencia}. Te mostramos los datos al terminar el pedido.
+                {hayCupon && ' Se suma a tu cupón.'}
+              </small>
+            </span>
+          </label>
+        </div>
+
+        {!conTransferencia && <BrandBrickMP />}
+
+        <button
+          type="submit"
+          disabled={enviando}
+          style={{
+            marginTop: '10px',
+            padding: '14px',
+            fontSize: '16px',
+            backgroundColor: enviando ? '#ccc' : conTransferencia ? '#2F6B63' : '#009ee3',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: enviando ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {enviando ? 'Procesando...' : conTransferencia ? 'Confirmar pedido' : 'Confirmar y pagar'}
+        </button>
+      </form>
+    </main>
+  )
+}
+
+const inputStyle = {
+  display: 'block',
+  width: '100%',
+  padding: '10px',
+  marginTop: '4px',
+  border: '1px solid #ccc',
+  borderRadius: '6px',
+  boxSizing: 'border-box',
+}
+
+function opcionPagoStyle(seleccionada) {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '12px',
+    border: seleccionada ? '2px solid #2F6B63' : '1px solid #ccc',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    backgroundColor: seleccionada ? '#f0f7f5' : '#fff',
+  }
+}
+
+===== src\app\checkout\SelectorEnvio.js =====
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useCarrito } from '@/lib/carrito'
+import {
+  ID_ENVIO_GRATIS_AUTO,
+  NOMBRE_ENVIO_GRATIS,
+  elegirOpcionEnvioGratis,
+} from '@/lib/configEnvioGratis'
+import { textoConfeccion } from '@/lib/configConfeccion'
+
+// Opción de entrega sin envío. El checkout reconoce este nombre y no pide la dirección.
+const RETIRO_EN_PERSONA = {
+  id: 'retiro-en-persona',
+  nombre: 'Retiro en persona',
+  costo: 0,
+  envioCarrier: null,
+  envioServiceCode: null,
+  envioBranchCode: null,
+}
+
+function rango(min, max) {
+  return min === max ? `${min}` : `${min} a ${max}`
+}
+
+// Plazos por separado: total, confección (de configConfeccion.js) y envío (según la zona, los define la cotización)
+function TiemposEntrega({ opcion }) {
+  if (!opcion) return null
+
+  return (
+    <div style={{ marginTop: '4px', marginLeft: '24px', fontSize: '12px', color: '#666', lineHeight: 1.6 }}>
+      <div style={{ color: '#333', fontWeight: 600 }}>
+        Llega en aprox. {rango(opcion.diasTotalMin, opcion.diasTotalMax)} días
+      </div>
+      <div>🧵 Confección: {textoConfeccion()}</div>
+      <div>🚚 Envío: {opcion.envioTexto}</div>
+    </div>
+  )
+}
+
+export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
+  const [cpInput, setCpInput] = useState('')
+  const [opcionesEnvia, setOpcionesEnvia] = useState([])
+  const [cargando, setCargando] = useState(false)
+  const [errorCotizacion, setErrorCotizacion] = useState(null)
+  
+  const { items, zonaEnvio, setZonaEnvio, envioGratis } = useCarrito()
+
+  const retiroSeleccionado = zonaEnvio?.id === RETIRO_EN_PERSONA.id
+
+  // En el checkout se le pasa el código postal del formulario; en el panel del carrito no
+  const dentroDelCheckout = cpDireccion !== undefined
+
+  // Sincronizar si el usuario cambia el CP en el formulario principal
+  useEffect(() => {
+    if (cpDireccion && cpDireccion !== cpInput) {
+      setCpInput(cpDireccion)
+    }
+  }, [cpDireccion])
+
+  // Función para consultar la cotización a Envia.com
+  const cotizar = async (cp) => {
+    if (!cp || String(cp).trim().length < 4) {
+      setErrorCotizacion('Ingresá un Código Postal válido (4 dígitos).')
+      setOpcionesEnvia([])
+      return
+    }
+
+    setCargando(true)
+    setErrorCotizacion(null)
+
+    try {
+      const res = await fetch('/api/envios/cotizar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postalCode: String(cp).trim(),
+          items: items,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.success && data.rates?.length > 0) {
+        setOpcionesEnvia(data.rates)
+        setErrorCotizacion(null)
+      } else {
+        setErrorCotizacion('No se encontraron opciones de envío para este Código Postal.')
+        setOpcionesEnvia([])
+      }
+    } catch (err) {
+      setErrorCotizacion('Error al calcular el envío. Intentalo de nuevo.')
+      setOpcionesEnvia([])
+    } finally {
+      setCargando(false)
+    }
+  }
+
+  // Cotizar automáticamente si el CP tiene 4 dígitos
+  useEffect(() => {
+    if (cpInput.trim().length >= 4) {
+      const timer = setTimeout(() => cotizar(cpInput), 500)
+      return () => clearTimeout(timer)
+    }
+  }, [cpInput, items])
+
+  // ---------- Envío gratis: la empresa se elige sola, el cliente no ve opciones ----------
+
+  // Si el carrito baja del monto, se descarta la elección automática
+  useEffect(() => {
+    if (!envioGratis && zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO) setZonaEnvio(null)
+  }, [envioGratis, zonaEnvio])
+
+  // Con las tarifas cotizadas para su código postal, se elige la empresa (Urbano, si no OCA, a domicilio)
+  useEffect(() => {
+    if (!envioGratis || retiroSeleccionado || opcionesEnvia.length === 0) return
+    const elegida = elegirOpcionEnvioGratis(opcionesEnvia)
+    if (!elegida) return
+
+    const yaEstaElegida =
+      zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO &&
+      zonaEnvio.envioCarrier === elegida.carrierSlug &&
+      zonaEnvio.envioServiceCode === elegida.serviceCode
+    if (yaEstaElegida) return
+
+    setZonaEnvio({
+      id: ID_ENVIO_GRATIS_AUTO,
+      nombre: NOMBRE_ENVIO_GRATIS,
+      costo: 0,
+      envioCarrier: elegida.carrierSlug,
+      envioServiceCode: elegida.serviceCode,
+      envioBranchCode: elegida.branches?.[0]?.branchCode || null,
+    })
+  }, [envioGratis, retiroSeleccionado, opcionesEnvia, zonaEnvio])
+
+  // Si el nuevo código postal no tiene cobertura, se descarta la elección anterior
+  useEffect(() => {
+    if (envioGratis && errorCotizacion && zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO) setZonaEnvio(null)
+  }, [envioGratis, errorCotizacion, zonaEnvio])
+
+  if (envioGratis) {
+    const aDomicilioSeleccionado = !retiroSeleccionado
+    const confirmado = zonaEnvio?.id === ID_ENVIO_GRATIS_AUTO
+
+    // La opción que quedó elegida sola, para mostrar sus plazos
+    const opcionConfirmada = confirmado
+      ? opcionesEnvia.find(
+          (o) => o.carrierSlug === zonaEnvio.envioCarrier && o.serviceCode === zonaEnvio.envioServiceCode
+        )
+      : null
+
+    let estado = null
+    if (aDomicilioSeleccionado) {
+      if (cargando) {
+        estado = <span style={{ color: '#009ee3' }}>⏳ Confirmando tu envío...</span>
+      } else if (confirmado) {
+        estado = <span style={{ color: '#15803d' }}>✅ Envío confirmado</span>
+      } else if (errorCotizacion) {
+        estado = <span style={{ color: '#d9534f' }}>{errorCotizacion}</span>
+      } else if (dentroDelCheckout) {
+        estado = <span>Completá tu código postal más abajo para confirmar el envío.</span>
+      } else {
+        estado = <span>Confirmás tu código postal al finalizar la compra.</span>
+      }
+    }
+
+    return (
+      <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', marginTop: '15px', backgroundColor: '#fafafa' }}>
+        <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
+          ¿Cómo querés recibir tu pedido?
+        </p>
+
+        <label
+          style={{
+            display: 'block',
+            padding: '12px',
+            border: aDomicilioSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+            borderRadius: '6px',
+            marginBottom: '10px',
+            cursor: 'pointer',
+            backgroundColor: aDomicilioSeleccionado ? '#f0f8ff' : '#fff',
+          }}
+        >
+          <input
+            type="radio"
+            name="zonaEnvio"
+            checked={aDomicilioSeleccionado}
+            onChange={() => setZonaEnvio(null)}
+            style={{ marginRight: '10px' }}
+          />
+          <strong>Envío a domicilio</strong> — <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
+          {estado && (
+            <small style={{ display: 'block', marginLeft: '24px', marginTop: '4px', color: '#666' }}>{estado}</small>
+          )}
+          {aDomicilioSeleccionado && !cargando && <TiemposEntrega opcion={opcionConfirmada} />}
+        </label>
+
+        <label
+          style={{
+            display: 'block',
+            padding: '12px',
+            border: retiroSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            backgroundColor: retiroSeleccionado ? '#f0f8ff' : '#fff',
+          }}
+        >
+          <input
+            type="radio"
+            name="zonaEnvio"
+            checked={retiroSeleccionado}
+            onChange={() => setZonaEnvio({ ...RETIRO_EN_PERSONA })}
+            style={{ marginRight: '10px' }}
+          />
+          <strong>Retiro en persona</strong> — Gratis
+          <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
+            Te avisamos cuando esté listo y coordinamos el retiro.
+          </small>
+        </label>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: '16px', border: '1px solid #ddd', borderRadius: '8px', marginTop: '15px', backgroundColor: '#fafafa' }}>
+      {/* Retiro en persona: no necesita Código Postal ni cotización */}
+      <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
+        ¿Cómo querés recibir tu pedido?
+      </p>
+
+      <label
+        style={{
+          display: 'block',
+          padding: '12px',
+          border: retiroSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+          borderRadius: '6px',
+          marginBottom: '16px',
+          cursor: 'pointer',
+          backgroundColor: retiroSeleccionado ? '#f0f8ff' : '#fff',
+        }}
+      >
+        <input
+          type="radio"
+          name="zonaEnvio"
+          checked={retiroSeleccionado}
+          onChange={() => setZonaEnvio({ ...RETIRO_EN_PERSONA })}
+          style={{ marginRight: '10px' }}
+        />
+        <strong>Retiro en persona</strong> — Gratis
+        <br />
+        <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
+          Te avisamos cuando esté listo y coordinamos el retiro.
+        </small>
+      </label>
+
+      <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
+        O calcular el costo de envío a domicilio:
+      </p>
+
+      {/* Casilla para que el usuario escriba o modifique su Código Postal */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+        <input
+          type="text"
+          placeholder="Ej: 1650"
+          value={cpInput}
+          onChange={(e) => setCpInput(e.target.value)}
+          maxLength={5}
+          style={{
+            padding: '8px 12px',
+            border: '1px solid #ccc',
+            borderRadius: '6px',
+            width: '120px',
+            fontSize: '14px',
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => cotizar(cpInput)}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#009ee3',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '6px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+          }}
+        >
+          {cargando ? 'Buscando...' : 'Calcular'}
+        </button>
+      </div>
+
+      {/* Estado de carga */}
+      {cargando && (
+        <p style={{ color: '#009ee3', fontSize: '14px', fontWeight: 'bold' }}>
+          ⏳ Consultando tarifas de Correo Argentino...
+        </p>
+      )}
+
+      {/* Error si no encuentra tarifas */}
+      {errorCotizacion && !cargando && (
+        <p style={{ color: '#d9534f', fontSize: '13px', margin: 0 }}>
+          {errorCotizacion}
+        </p>
+      )}
+
+      {/* Lista de opciones devueltas por Correo Argentino */}
+      {opcionesEnvia.length > 0 && (
+        <div style={{ marginTop: '10px' }}>
+          <p style={{ fontSize: '13px', color: '#555', marginBottom: '8px' }}>
+            Opciones disponibles para CP <strong>{cpInput}</strong>:
+          </p>
+
+          {opcionesEnvia.map((opcion) => {
+            const idUnico = `envia-${opcion.id}`
+            const estaSeleccionado = zonaEnvio?.id === idUnico
+
+            return (
+              <label
+                key={idUnico}
+                style={{
+                  display: 'block',
+                  padding: '12px',
+                  border: estaSeleccionado ? '2px solid #009ee3' : '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  marginBottom: '8px',
+                  cursor: 'pointer',
+                  backgroundColor: estaSeleccionado ? '#f0f8ff' : '#fff',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="zonaEnvio"
+                  checked={estaSeleccionado}
+                  onChange={() =>
+                    setZonaEnvio({
+                      id: idUnico,
+                      nombre: `${opcion.carrier} - ${opcion.service}`,
+                      costo: opcion.price,
+                      envioCarrier: opcion.carrierSlug,
+                      envioServiceCode: opcion.serviceCode,
+                      envioBranchCode: opcion.branches?.[0]?.branchCode || null,
+                    })
+                  }
+                  style={{ marginRight: '10px' }}
+                />
+                <strong>{opcion.service}</strong> —{' '}
+                {envioGratis ? (
+                  <>
+                    <s style={{ color: '#999' }}>${opcion.price}</s>{' '}
+                    <span style={{ color: '#15803d', fontWeight: 'bold' }}>¡Gratis!</span>
+                  </>
+                ) : (
+                  `$${opcion.price}`
+                )}
+
+                <TiemposEntrega opcion={opcion} />
+
+                {estaSeleccionado && opcion.branches?.length > 0 && (
+                  <div style={{ marginTop: '10px', marginLeft: '24px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>
+                      Elegí la sucursal:
+                    </label>
+                    <select
+                      value={zonaEnvio?.envioBranchCode || ''}
+                      onChange={(e) =>
+                        setZonaEnvio({
+                          ...zonaEnvio,
+                          envioBranchCode: e.target.value,
+                        })
+                      }
+                      style={{ padding: '6px', borderRadius: '6px', border: '1px solid #ccc', width: '100%' }}
+                    >
+                      {opcion.branches.map((b) => (
+                        <option key={b.branchCode} value={b.branchCode}>
+                          {b.direccion}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+===== src\app\CuponDesdeQR.js =====
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useCarrito } from '@/lib/carrito'
+import { etiquetaDescuento } from '@/lib/configCupones'
+
+// Si el cliente entra con un link como https://www.dimedetiambos.com.ar/?cupon=VERANO10
+// (por ejemplo, escaneando un QR), el cupón queda cargado solo y se muestra un aviso.
+export default function CuponDesdeQR() {
+  const { aplicarCupon } = useCarrito()
+  const [aviso, setAviso] = useState(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const codigo = params.get('cupon')
+    if (!codigo) return
+
+    // Se saca el cupón de la dirección para que no se vuelva a aplicar al recargar
+    params.delete('cupon')
+    const resto = params.toString()
+    window.history.replaceState(
+      null,
+      '',
+      window.location.pathname + (resto ? `?${resto}` : '') + window.location.hash
+    )
+
+    aplicarCupon(codigo).then((r) => {
+      if (r.ok) {
+        const minimo = Number(r.cupon.compra_minima) || 0
+        setAviso({
+          ok: true,
+          texto:
+            `🎟️ Cupón ${r.cupon.codigo} aplicado (${etiquetaDescuento(r.cupon)})` +
+            (minimo > 0 ? ` · compra mínima $${minimo.toLocaleString('es-AR')}` : ''),
+        })
+      } else {
+        setAviso({ ok: false, texto: r.error })
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!aviso) return
+    const timer = setTimeout(() => setAviso(null), 7000)
+    return () => clearTimeout(timer)
+  }, [aviso])
+
+  if (!aviso) return null
+
+  return (
+    <div
+      role="status"
+      onClick={() => setAviso(null)}
+      style={{
+        position: 'fixed',
+        top: '12px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 1000,
+        maxWidth: 'calc(100vw - 24px)',
+        padding: '12px 18px',
+        borderRadius: '10px',
+        fontSize: '14px',
+        textAlign: 'center',
+        cursor: 'pointer',
+        color: 'white',
+        backgroundColor: aviso.ok ? '#2F6B63' : '#b91c1c',
+        boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
+      }}
+    >
+      {aviso.texto}
+    </div>
+  )
+}
+
+
+===== src\app\Footer.js =====
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+
+export default function Footer() {
+  const pathname = usePathname()
+
+  if (pathname?.startsWith('/admin')) {
+    return null
+  }
+
+  return (
+    <footer className="w-full border-t border-[#E4DCCF] bg-[#FAF6F0] px-6 py-10">
+      <div className="mx-auto flex max-w-5xl flex-col gap-8 sm:flex-row sm:justify-between">
+        <div>
+          <h3 className="font-serif text-lg text-[#2E2A26]">Dimedeti Ambos</h3>
+          <p className="mt-2 max-w-xs text-sm text-[#8A8378]">
+            Indumentaria médica y sanitaria con diseño propio, hace más de 5 años.
+          </p>
+          <p className="mt-3 text-sm text-[#8A8378]">CUIT: 20-31943343-1</p>
+        </div>
+
+        <div>
+          <h4 className="text-sm font-semibold text-[#2E2A26]">Ayuda</h4>
+          <ul className="mt-2 space-y-2 text-sm text-[#8A8378]">
+            <li>
+              <Link href="/guia-de-talles" className="hover:text-[#2F6B63]">
+                Guía de talles
+              </Link>
+            </li>
+            <li>
+              <Link href="/politica-de-cambios" className="hover:text-[#2F6B63]">
+                Política de cambios
+              </Link>
+            </li>
+            <li>
+              <Link href="/quienes-somos" className="hover:text-[#2F6B63]">
+                Quiénes somos
+              </Link>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="text-sm font-semibold text-[#2E2A26]">Información legal</h4>
+          <ul className="mt-2 space-y-2 text-sm text-[#8A8378]">
+            <li>
+              <Link href="/terminos-y-condiciones" className="hover:text-[#2F6B63]">
+                Términos y condiciones
+              </Link>
+            </li>
+            <li>
+              <Link href="/politica-de-privacidad" className="hover:text-[#2F6B63]">
+                Política de privacidad
+              </Link>
+            </li>
+          </ul>
+          {/* Acá va el sello de Data Fiscal (ARCA) cuando tengamos el código */}
+        </div>
+      </div>
+
+      <p className="mx-auto mt-8 max-w-5xl text-xs text-[#CFC7B8]">
+        © {new Date().getFullYear()} Dimedeti Ambos. Todos los derechos reservados.
+      </p>
+    </footer>
+  )
+}
+
+
+===== src\app\globals.css =====
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Figtree:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #FAF6F0;
+  --foreground: #2E2A26;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Figtree', sans-serif;
+  --font-serif: 'Fraunces', serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+/* Pegar al final de src/app/globals.css */
+/* (borrá antes el bloque viejo del logo flotante: .dmt-logo-flotante) */
+
+/* Achicar / agrandar suave */
+.dmt-logo-img{ display:block; transition:height .3s ease; }
+
+/* 1) Entrada: desliza desde la izquierda, se revela con borde redondeado
+      (como la trompa de un auto), frena y rebota un poco. Una sola vez. */
+.dmt-entrada{
+  display:inline-flex;
+  animation:dmt-llegada 1.1s cubic-bezier(.22,.8,.3,1) both;
+}
+@keyframes dmt-llegada{
+  0%   { transform:translateX(-160px); clip-path:inset(0 100% 0 0 round 22px); opacity:0; }
+  15%  { opacity:1; }
+  60%  { transform:translateX(10px);   clip-path:inset(0 0 0 0 round 22px); opacity:1; }
+  80%  { transform:translateX(-4px);   clip-path:inset(0 0 0 0 round 22px); }
+  100% { transform:translateX(0);      clip-path:inset(0 0 0 0 round 22px); opacity:1; }
+}
+
+/* 2) Aureola: dos aros redondeados que se expanden y se desvanecen,
+      empiezan cuando el logo ya llegó. */
+.dmt-aureola{ position:relative; display:inline-flex; border-radius:22px; }
+.dmt-aureola::before,
+.dmt-aureola::after{
+  content:""; position:absolute; inset:-3px; border-radius:25px;
+  border:2px solid rgba(71,73,78,.55);
+  opacity:0; pointer-events:none;
+  animation:dmt-aureola 2.6s ease-out infinite;
+  animation-delay:1.3s;
+}
+.dmt-aureola::after{ animation-delay:2.6s; }
+@keyframes dmt-aureola{
+  0%   { transform:scale(1);    opacity:.7; }
+  100% { transform:scale(1.22); opacity:0;  }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .dmt-entrada{ animation:none; }
+  .dmt-aureola::before,.dmt-aureola::after{ animation:none; }
+}
+
+===== src\app\Header.js =====
+'use client'
+
+import Link from 'next/link'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+
+const SECCIONES = [
+  { href: '/', label: 'Inicio' },
+  { href: '/quienes-somos', label: 'Quiénes somos' },
+  { href: '/guia-de-talles', label: 'Guía de talles' },
+]
+
+// Umbrales de scroll. Al achicarse, el header pierde ~52px de alto y el contenido sube,
+// lo que hace bajar el scrollY. Si la distancia entre los dos umbrales es menor que ese
+// salto, el header rebota (se achica, se agranda, se achica...).
+// Por eso están separados por mucho más de 52px.
+const UMBRAL_ACHICAR = 140
+const UMBRAL_AGRANDAR = 10
+
+export default function Header() {
+  const [busqueda, setBusqueda] = useState('')
+  const [menuAbierto, setMenuAbierto] = useState(false)
+  const [achicado, setAchicado] = useState(false)
+  const router = useRouter()
+
+  // Achica el header al bajar y lo agranda al volver arriba.
+  useEffect(() => {
+    function onScroll() {
+      const y = window.scrollY
+      setAchicado((prev) => (prev ? y > UMBRAL_AGRANDAR : y > UMBRAL_ACHICAR))
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  function handleBuscar(e) {
+    e.preventDefault()
+    if (busqueda.trim().length > 0) {
+      router.push(`/buscar?q=${encodeURIComponent(busqueda.trim())}`)
+      setBusqueda('')
+    }
+  }
+
+  return (
+    <header
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 1000,
+        padding: achicado ? '6px 40px' : '14px 40px',
+        borderBottom: '1px solid #eee',
+        backgroundColor: '#fff',
+        boxShadow: achicado ? '0 2px 10px rgba(0,0,0,0.08)' : 'none',
+        transition: 'padding .3s ease, box-shadow .3s ease',
+        // Evita que el navegador reajuste el scroll solo cuando cambia el alto del header
+        overflowAnchor: 'none',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '20px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Link
+          href="/"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '10px',
+            textDecoration: 'none',
+          }}
+        >
+          {/* Aureola que pulsa alrededor del logo */}
+          <span className="dmt-aureola">
+            {/* Entrada: desliza desde la izquierda con borde redondeado y rebote */}
+            <span className="dmt-entrada">
+              <img
+                src="/logo.png"
+                alt="dimedetiambos"
+                className="dmt-logo-img"
+                style={{
+                  height: achicado ? '52px' : '88px',
+                  width: 'auto',
+                  objectFit: 'contain',
+                  transition: 'height .3s ease',
+                }}
+              />
+            </span>
+          </span>
+          <span
+            style={{
+              fontSize: '20px',
+              fontWeight: 'bold',
+              color: '#333',
+              letterSpacing: '0.3px',
+            }}
+          >
+            Tienda
+          </span>
+        </Link>
+
+        {/* Menú de navegación - desktop */}
+        <nav
+          style={{
+            display: 'flex',
+            gap: '24px',
+            flexWrap: 'wrap',
+          }}
+        >
+          {SECCIONES.map((seccion) => (
+            <Link
+              key={seccion.href}
+              href={seccion.href}
+              style={{
+                textDecoration: 'none',
+                color: '#333',
+                fontSize: '15px',
+                fontWeight: 500,
+              }}
+            >
+              {seccion.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Buscador */}
+        <form
+          onSubmit={handleBuscar}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            border: '1px solid #ddd',
+            borderRadius: '999px',
+            padding: '6px 14px',
+            minWidth: '200px',
+            flex: '1 1 220px',
+            maxWidth: '320px',
+          }}
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#888"
+            strokeWidth="2"
+            style={{ flexShrink: 0, marginRight: '8px' }}
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
+          <input
+            type="text"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar ambos..."
+            style={{
+              border: 'none',
+              outline: 'none',
+              fontSize: '14px',
+              width: '100%',
+              background: 'transparent',
+            }}
+          />
+        </form>
+      </div>
+    </header>
+  )
+}
+
+===== src\app\layout.js =====
+// DESTINO: src/app/layout.js  (reemplaza el archivo actual)
+import { CarritoProvider } from '@/lib/carrito'
+import Header from './Header'
+import './globals.css'
+import FloatingWhatsApp from './FloatingWhatsApp'
+import Footer from './Footer'
+import MetaPixel from '../components/MetaPixel'
+import CuponDesdeQR from './CuponDesdeQR'
+import CartelSuscripcion from './CartelSuscripcion'
+
+export const metadata = {
+  // Dirección oficial: Google la usa como base para todas las direcciones del sitio
+  metadataBase: new URL('https://www.dimedetiambos.com.ar'),
+  title: {
+    default: 'Dimedeti Ambos | Ambos médicos y sanitarios',
+    template: '%s | Dimedeti Ambos',
+  },
+  description:
+    'Ambos médicos y sanitarios confeccionados a pedido. Elegí tu talle y color y recibilo en todo el país.',
+  icons: {
+    icon: '/icon-192.png',
+    apple: '/apple-touch-icon.png',
+  },
+}
+
+export const viewport = {
+  themeColor: '#47494e',
+}
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="es">
+      <body>
+        <CarritoProvider>
+          <Header />
+          <MetaPixel />
+          <CuponDesdeQR />
+          {children}
+          <FloatingWhatsApp />
+          <CartelSuscripcion />
+          <Footer />
+        </CarritoProvider>
+      </body>
+    </html>
+  )
+}
+
+===== src\app\page.js =====
+import Image from 'next/image'
+import { supabase } from '@/lib/supabase'
+import { textoConfeccion } from '@/lib/configConfeccion'
+import ProductoCard from './ProductoCard'
+import CarritoIcono from './CarritoIcono'
+import TestimoniosCarousel from './TestimoniosCarousel'
+import BannerCarrusel from './BannerCarrusel'
+
+export const dynamic = 'force-dynamic'
+
+// Animación del cartel verde: el texto se desplaza hacia la izquierda sin cortes
+const CSS_CARTEL =
+  '.cartel-track{display:flex;width:max-content;animation:cartel-scroll 30s linear infinite}' +
+  '.cartel-track:hover{animation-play-state:paused}' +
+  '.cartel-grupo{display:flex;flex-shrink:0}' +
+  '@keyframes cartel-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
+  '@media (prefers-reduced-motion: reduce){.cartel-track{animation:none}}'
+
+// Banner de cada categoría. Los archivos van en public/banners/
+// Si guardaste las imágenes con otra extensión (por ejemplo .webp o .png), cambiala acá.
+const CATEGORIAS = [
+  { id: 0, banner: '/banners/ambos.jpg', alt: 'Ambos' },
+  { id: 1, banner: '/banners/chaquetas.jpg', alt: 'Chaquetas' },
+  { id: 2, banner: '/banners/pantalones.jpg', alt: 'Pantalones' },
+]
+
+// Orden del catálogo: primero ambos, luego chaquetas y al final pantalones.
+// Se mira cómo EMPIEZA el nombre, para que "Ambo ... Pantalon con Puños" no caiga en pantalones.
+function grupo(nombre = '') {
+  const n = nombre
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+  if (n.startsWith('ambo')) return 0
+  if (n.startsWith('chaqueta')) return 1
+  if (n.startsWith('pantalon')) return 2
+  return 3
+}
+
+export default async function Home() {
+  const { data } = await supabase
+    .from('productos')
+    .select('*')
+    .eq('visible', true)
+    .order('id', { ascending: true })
+
+  const productos = [...(data || [])].sort(
+    (a, b) => grupo(a.nombre) - grupo(b.nombre)
+  )
+
+  // Productos cuyo nombre no empieza con ambo, chaqueta ni pantalon: van al final, sin banner
+  const otros = productos.filter((p) => grupo(p.nombre) === 3)
+
+  return (
+    <main className="min-h-screen bg-[#FAF6F0]">
+      <style>{CSS_CARTEL}</style>
+      <div className="overflow-hidden bg-[#2F6B63] py-2.5 text-sm text-white">
+        <div className="cartel-track">
+          {[0, 1].map((copia) => (
+            <div key={copia} className="cartel-grupo" aria-hidden={copia === 1}>
+              {[0, 1, 2, 3].map((n) => (
+                <span key={n} className="whitespace-nowrap px-8">
+                  🧵 Todas las prendas se confeccionan a pedido · Tiempo de confección: <strong>{textoConfeccion()}</strong>
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <header
+        className="flex items-center justify-between border-b border-[#E4DCCF] px-6 py-10 md:px-10 md:py-14"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, rgba(250,246,240,0.95) 0%, rgba(250,246,240,0.75) 50%, rgba(250,246,240,0.35) 100%), url(/img/fondo-tela.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'right center',
+        }}
+      >
+        <span className="font-serif text-3xl tracking-tight text-[#2E2A26] md:text-4xl">
+          Dimedeti Ambos
+        </span>
+        <CarritoIcono />
+      </header>
+
+      <BannerCarrusel confeccion={textoConfeccion()} />
+      <TestimoniosCarousel />
+
+      <div
+        className="relative px-6 md:px-10 py-10"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(250,246,240,0.75), rgba(250,246,240,0.85)), url(/img/fondo-tela.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
+          backgroundAttachment: 'fixed',
+        }}
+      >
+        {CATEGORIAS.map((cat) => {
+          const lista = productos.filter((p) => grupo(p.nombre) === cat.id)
+          if (lista.length === 0) return null
+
+          return (
+            <section key={cat.id} className="mb-10">
+              <Image
+                src={cat.banner}
+                alt={cat.alt}
+                width={1672}
+                height={941}
+                sizes="(min-width: 768px) 90vw, 100vw"
+                className="mb-6 block h-auto w-full rounded-xl"
+              />
+              <div className="flex flex-wrap gap-6">
+                {lista.map((producto) => (
+                  <ProductoCard key={producto.id} producto={producto} />
+                ))}
+              </div>
+            </section>
+          )
+        })}
+
+        {otros.length > 0 && (
+          <section className="mb-10">
+            <div className="flex flex-wrap gap-6">
+              {otros.map((producto) => (
+                <ProductoCard key={producto.id} producto={producto} />
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </main>
+  )
+}
+
+===== src\app\pago-transferencia\page.js =====
+'use client'
+
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { DATOS_BANCARIOS, WHATSAPP_NEGOCIO } from '@/lib/configTransferencia'
+
+function formatearMonto(valor) {
+  return Number(valor).toLocaleString('es-AR')
+}
+
+export default function PagoTransferencia() {
+  const [pedido, setPedido] = useState(null)
+  const [cargado, setCargado] = useState(false)
+  const [copiado, setCopiado] = useState('')
+
+  useEffect(() => {
+    try {
+      const guardado = sessionStorage.getItem('pedido_transferencia')
+      if (guardado) setPedido(JSON.parse(guardado))
+    } catch (e) {
+      // sin datos: se muestra el aviso genérico
+    }
+    setCargado(true)
+  }, [])
+
+  async function copiar(etiqueta, valor) {
+    try {
+      await navigator.clipboard.writeText(valor)
+      setCopiado(etiqueta)
+      setTimeout(() => setCopiado(''), 2000)
+    } catch (e) {
+      alert('No se pudo copiar. Seleccioná el texto y copialo a mano.')
+    }
+  }
+
+  if (!cargado) return null
+
+  if (!pedido) {
+    return (
+      <main style={{ padding: '40px 20px', maxWidth: '520px', margin: '0 auto', textAlign: 'center' }}>
+        <h1>No encontramos un pedido reciente</h1>
+        <p style={{ color: '#555' }}>
+          Si recién hiciste un pedido por transferencia, revisá tu email: ahí te enviamos los datos para pagar.
+        </p>
+        <Link href="/" style={{ display: 'inline-block', marginTop: '16px', color: '#2F6B63', fontWeight: 'bold' }}>
+          Volver a la tienda
+        </Link>
+      </main>
+    )
+  }
+
+  const mensajeWhatsApp = `Hola! Hice el pedido #${pedido.id} por transferencia por $${pedido.total}. Te mando el comprobante.`
+  const linkWhatsApp = `https://wa.me/${WHATSAPP_NEGOCIO}?text=${encodeURIComponent(mensajeWhatsApp)}`
+
+  const filas = [
+    { etiqueta: 'Titular', valor: DATOS_BANCARIOS.titular, copiable: false },
+    { etiqueta: 'Banco', valor: DATOS_BANCARIOS.banco, copiable: false },
+    { etiqueta: 'Alias', valor: DATOS_BANCARIOS.alias, copiable: true },
+    { etiqueta: 'CBU', valor: DATOS_BANCARIOS.cbu, copiable: true },
+    { etiqueta: 'CUIT', valor: DATOS_BANCARIOS.cuit, copiable: false },
+  ].filter((fila) => fila.valor)
+
+  return (
+    <main style={{ padding: 'clamp(16px, 5vw, 40px)', maxWidth: '520px', margin: '0 auto' }}>
+      <h1 style={{ marginBottom: '4px' }}>¡Recibimos tu pedido!</h1>
+      <p style={{ marginTop: 0, color: '#555' }}>
+        Pedido <strong>#{pedido.id}</strong>. Para confirmarlo, hacé la transferencia con estos datos.
+      </p>
+
+      <div style={{ backgroundColor: '#f0f7f5', border: '1px solid #cfe3de', borderRadius: '10px', padding: '16px', marginTop: '16px' }}>
+        <p style={{ margin: 0, fontSize: '13px', color: '#555' }}>Total a transferir</p>
+        <p style={{ margin: '2px 0 0', fontSize: '28px', fontWeight: 'bold', color: '#2F6B63' }}>
+          ${formatearMonto(pedido.total)}
+        </p>
+        {pedido.descuento > 0 && (
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#15803d' }}>
+            Ya incluye tu descuento de ${formatearMonto(pedido.descuento)}
+          </p>
+        )}
+      </div>
+
+      <div style={{ border: '1px solid #e5e5e5', borderRadius: '10px', padding: '8px 16px', marginTop: '16px' }}>
+        {filas.map((fila) => (
+          <div
+            key={fila.etiqueta}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              padding: '10px 0',
+              borderBottom: '1px solid #f0f0f0',
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: '12px', color: '#888' }}>{fila.etiqueta}</p>
+              <p style={{ margin: 0, fontWeight: 'bold', wordBreak: 'break-all' }}>{fila.valor}</p>
+            </div>
+            {fila.copiable && (
+              <button
+                onClick={() => copiar(fila.etiqueta, fila.valor)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '13px',
+                  borderRadius: '6px',
+                  border: '1px solid #2F6B63',
+                  backgroundColor: copiado === fila.etiqueta ? '#2F6B63' : '#fff',
+                  color: copiado === fila.etiqueta ? '#fff' : '#2F6B63',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {copiado === fila.etiqueta ? '¡Copiado!' : 'Copiar'}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p style={{ marginTop: '20px' }}>
+        Después de transferir, mandanos el comprobante por WhatsApp indicando tu número de pedido:
+      </p>
+      <a
+        href={linkWhatsApp}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          display: 'block',
+          textAlign: 'center',
+          padding: '14px',
+          borderRadius: '999px',
+          backgroundColor: '#25D366',
+          color: '#fff',
+          fontWeight: 'bold',
+          textDecoration: 'none',
+        }}
+      >
+        Enviar comprobante por WhatsApp
+      </a>
+
+      <p style={{ marginTop: '20px', fontSize: '14px', color: '#555' }}>
+        Cuando veamos el pago te lo confirmamos por mail y empezamos a confeccionar tu pedido. También te enviamos
+        estos datos por email.
+      </p>
+
+      <Link href="/" style={{ display: 'inline-block', marginTop: '8px', color: '#2F6B63', fontWeight: 'bold' }}>
+        Volver a la tienda
+      </Link>
+    </main>
+  )
+}
+
+===== src\app\robots.js =====
+// Le dice a Google qué páginas no tiene que mirar (administración, pagos, API).
+export default function robots() {
+  return {
+    rules: [
+      {
+        userAgent: '*',
+        allow: '/',
+        disallow: [
+          '/admin',
+          '/api/',
+          '/checkout',
+          '/pago-exitoso',
+          '/pago-fallido',
+          '/pago-pendiente',
+          '/pago-transferencia',
+        ],
+      },
+    ],
+    sitemap: 'https://www.dimedetiambos.com.ar/sitemap.xml',
+  }
+}
+
+===== src\app\terminos-y-condiciones\page.js =====
+import Link from 'next/link'
+
+export const metadata = {
+  title: 'Términos y condiciones | Dimedeti Ambos',
+}
+
+// COMPLETÁ estos datos antes de publicar.
+const TITULAR = {
+  nombre: 'ABEL BRIAN NYGAARD',
+  cuit: '20-31943343-1',
+  domicilio: 'Posadas 2646, Villa Libertad, Provincia de Buenos Aires, CP 1650',
+  email: 'negocios@dimedetiambos.com.ar',
+}
+
+const FECHA_ACTUALIZACION = 'octubre de 2026'
+
+function Seccion({ titulo, children }) {
+  return (
+    <section className="mt-10">
+      <h2 className="font-serif text-xl text-[#2E2A26]">{titulo}</h2>
+      <div className="mt-3 space-y-3">{children}</div>
+    </section>
+  )
+}
+
+export default function TerminosYCondiciones() {
+  return (
+    <main
+      className="min-h-screen"
+      style={{
+        backgroundImage:
+          'linear-gradient(rgba(250,246,240,0.88), rgba(250,246,240,0.94)), url(/img/fondo-tela-negra.jpg)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center top',
+        backgroundAttachment: 'fixed',
+      }}
+    >
+      <div className="mx-auto max-w-2xl px-6 py-16 text-[15px] leading-relaxed text-[#3A352F]">
+        <h1 className="font-serif text-3xl text-[#2E2A26]">Términos y condiciones</h1>
+        <p className="mt-3 text-sm text-[#8A8378]">Última actualización: {FECHA_ACTUALIZACION}</p>
+
+        <Seccion titulo="Quiénes somos">
+          <p>
+            Este sitio es operado por {TITULAR.nombre}, CUIT {TITULAR.cuit}, con domicilio en{' '}
+            {TITULAR.domicilio}, bajo la marca Dimedeti Ambos. Contacto: {TITULAR.email}.
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Productos y precios">
+          <p>
+            Los precios están expresados en pesos argentinos. Las imágenes y descripciones
+            buscan ser lo más fieles posible, aunque los colores pueden variar levemente según
+            la pantalla. Nos reservamos el derecho de corregir errores evidentes de precio o
+            de descripción antes de confirmar un pedido.
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Pagos">
+          <p>
+            Los pagos se procesan a través de Mercado Pago. El pedido se confirma una vez que
+            el pago es aprobado.
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Envíos y retiro">
+          <p>
+  El costo y las opciones de envío se calculan en el checkout según el código postal
+  de destino. También ofrecemos retiro en persona. El plazo de preparación del pedido
+  es de 4 a 12 días corridos, según la demanda del momento. Una vez despachado, el
+  plazo de entrega depende de la empresa de transporte y es estimado.
+</p>
+        </Seccion>
+
+        <Seccion titulo="Facturación">
+          <p>
+            Emitimos factura electrónica por cada compra y la enviamos al email indicado en el
+            pedido.
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Derecho de arrepentimiento">
+          <p>
+            Tenés derecho a arrepentirte de tu compra dentro de los 10 días corridos desde
+            que recibís el producto, sin costo alguno para vos, conforme al artículo 34 de la
+            Ley Nº 24.240. Para ejercerlo, usá el botón de arrepentimiento disponible en la
+            página de inicio.
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Cambios y devoluciones">
+          <p>
+            Las condiciones para cambios y devoluciones están en nuestra{' '}
+            <Link href="/politica-de-cambios" className="text-[#2F6B63] underline">
+              política de cambios
+            </Link>
+            .
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Datos personales">
+          <p>
+            El tratamiento de tus datos se rige por nuestra{' '}
+            <Link href="/politica-de-privacidad" className="text-[#2F6B63] underline">
+              política de privacidad
+            </Link>
+            .
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Propiedad intelectual">
+          <p>
+            El contenido del sitio (textos, imágenes, diseños y marca) pertenece a Dimedeti
+            Ambos y no puede reproducirse sin autorización.
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Defensa del consumidor">
+          <p>
+            Ante cualquier inconveniente, escribinos primero a {TITULAR.email}. También podés
+            acudir a la autoridad de Defensa del Consumidor de tu jurisdicción.
+          </p>
+        </Seccion>
+
+        <Seccion titulo="Ley aplicable">
+          <p>Estos términos se rigen por las leyes de la República Argentina.</p>
+        </Seccion>
+      </div>
+    </main>
+  )
+}
+
+
+===== src\lib\carrito.js =====
+// DESTINO: src/lib/carrito.js  (reemplaza el archivo actual)
+'use client'
+import { createContext, useContext, useState, useEffect } from 'react'
+import { UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import { calcularDescuentoCupon, normalizarCodigo } from '@/lib/configCupones'
+import { supabase } from '@/lib/supabase'
+
+const CarritoContext = createContext()
+
+const CLAVE_ITEMS = 'dimedetiambos_carrito_items'
+const CLAVE_ZONA = 'dimedetiambos_zona_envio'
+const CLAVE_CUPON = 'dimedetiambos_cupon'
+const CLAVE_CUPON_PENDIENTE = 'dimedetiambos_cupon_pendiente'
+const CLAVE_BIENVENIDA_PROBADA = 'dimedetiambos_bienvenida_probada'
+
+// Cupón de bienvenida (se crea desde el panel admin con este mismo código)
+const CODIGO_BIENVENIDA = 'BIENVENIDA5'
+
+export function CarritoProvider({ children }) {
+  const [items, setItems] = useState([])
+  const [zonaEnvio, setZonaEnvio] = useState(null)
+  const [cupon, setCupon] = useState(null)
+  const [cargado, setCargado] = useState(false)
+
+  // Sesión con Google
+  const [usuario, setUsuario] = useState(null)
+  const [sesionLista, setSesionLista] = useState(false)
+
+  // Estado compartido del panel del carrito (abierto / cerrado)
+  const [panelAbierto, setPanelAbierto] = useState(false)
+
+  function abrirPanel() {
+    setPanelAbierto(true)
+  }
+
+  function cerrarPanel() {
+    setPanelAbierto(false)
+  }
+
+  function alternarPanel() {
+    setPanelAbierto((abierto) => !abierto)
+  }
+
+  // Al montar en el navegador, recuperar lo guardado
+  useEffect(() => {
+    try {
+      const itemsGuardados = localStorage.getItem(CLAVE_ITEMS)
+      const zonaGuardada = localStorage.getItem(CLAVE_ZONA)
+      const cuponGuardado = localStorage.getItem(CLAVE_CUPON)
+
+      if (itemsGuardados) setItems(JSON.parse(itemsGuardados))
+      if (zonaGuardada) setZonaEnvio(JSON.parse(zonaGuardada))
+      if (cuponGuardado) setCupon(JSON.parse(cuponGuardado))
+    } catch (err) {
+      console.error('Error al leer el carrito guardado:', err)
+    } finally {
+      setCargado(true)
+    }
+  }, [])
+
+  // Escuchar la sesión de Google (al entrar, al volver de Google y al salir)
+  useEffect(() => {
+    let activo = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!activo) return
+      setUsuario(data.session?.user ?? null)
+      setSesionLista(true)
+    })
+
+    const { data: suscripcion } = supabase.auth.onAuthStateChange((_evento, sesion) => {
+      setUsuario(sesion?.user ?? null)
+      setSesionLista(true)
+    })
+
+    return () => {
+      activo = false
+      suscripcion.subscription.unsubscribe()
+    }
+  }, [])
+
+  // Guardar items cada vez que cambian (una vez que ya se cargó lo inicial)
+  useEffect(() => {
+    if (!cargado) return
+    try {
+      localStorage.setItem(CLAVE_ITEMS, JSON.stringify(items))
+    } catch (err) {
+      console.error('Error al guardar el carrito:', err)
+    }
+  }, [items, cargado])
+
+  // Guardar zona de envío cada vez que cambia
+  useEffect(() => {
+    if (!cargado) return
+    try {
+      if (zonaEnvio) {
+        localStorage.setItem(CLAVE_ZONA, JSON.stringify(zonaEnvio))
+      } else {
+        localStorage.removeItem(CLAVE_ZONA)
+      }
+    } catch (err) {
+      console.error('Error al guardar la zona de envío:', err)
+    }
+  }, [zonaEnvio, cargado])
+
+  // Guardar el cupón cada vez que cambia
+  useEffect(() => {
+    if (!cargado) return
+    try {
+      if (cupon) {
+        localStorage.setItem(CLAVE_CUPON, JSON.stringify(cupon))
+      } else {
+        localStorage.removeItem(CLAVE_CUPON)
+      }
+    } catch (err) {
+      console.error('Error al guardar el cupón:', err)
+    }
+  }, [cupon, cargado])
+
+  function agregarAlCarrito(producto, cantidad = 1) {
+    setItems((prev) => {
+      const existe = prev.find(
+        (item) => item.id === producto.id && item.variante_id === producto.variante_id
+      )
+      if (existe) {
+        return prev.map((item) =>
+          item.id === producto.id && item.variante_id === producto.variante_id
+            ? { ...item, cantidad: item.cantidad + cantidad }
+            : item
+        )
+      }
+      return [...prev, { ...producto, cantidad }]
+    })
+  }
+
+  function quitarDelCarrito(id, varianteId) {
+    setItems((prev) =>
+      prev.filter((item) => !(item.id === id && item.variante_id === varianteId))
+    )
+  }
+
+  function actualizarCantidad(id, varianteId, nuevaCantidad) {
+    if (nuevaCantidad < 1) {
+      quitarDelCarrito(id, varianteId)
+      return
+    }
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === id && item.variante_id === varianteId
+          ? { ...item, cantidad: nuevaCantidad }
+          : item
+      )
+    )
+  }
+
+  function vaciarCarrito() {
+    setItems([])
+    setZonaEnvio(null)
+    setCupon(null)
+  }
+
+  // ---------- Sesión con Google ----------
+
+  async function iniciarSesionGoogle() {
+    const volverA = window.location.href.split('#')[0]
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: volverA },
+    })
+  }
+
+  async function cerrarSesion() {
+    await supabase.auth.signOut()
+    setCupon(null)
+  }
+
+  // Cabeceras para las llamadas a la API: incluyen la sesión para que el servidor sepa quién es
+  async function cabecerasConSesion() {
+    const cabeceras = { 'Content-Type': 'application/json' }
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (token) cabeceras.Authorization = `Bearer ${token}`
+    } catch (err) {
+      console.error('No se pudo leer la sesión:', err)
+    }
+    return cabeceras
+  }
+
+  // Comprueba con el servidor que el cupón exista y esté vigente, y lo deja cargado.
+  // Para usar un cupón hay que haber ingresado con Google: si no, se recuerda el código
+  // y se aplica solo apenas la persona ingresa.
+  // El descuento definitivo se vuelve a calcular en el servidor al pagar.
+  async function aplicarCupon(codigo) {
+    try {
+      const respuesta = await fetch('/api/validar-cupon', {
+        method: 'POST',
+        headers: await cabecerasConSesion(),
+        body: JSON.stringify({ codigo }),
+      })
+      const datos = await respuesta.json()
+
+      if (respuesta.status === 401 || datos.login_requerido) {
+        try {
+          localStorage.setItem(CLAVE_CUPON_PENDIENTE, normalizarCodigo(codigo))
+        } catch {}
+        return {
+          ok: false,
+          loginRequerido: true,
+          error: datos.error || 'Para usar un cupón ingresá con Google.',
+        }
+      }
+
+      if (!respuesta.ok || !datos.cupon) {
+        return { ok: false, error: datos.error || 'No pudimos aplicar el cupón.' }
+      }
+
+      setCupon(datos.cupon)
+      return { ok: true, cupon: datos.cupon }
+    } catch (err) {
+      return { ok: false, errorDeRed: true, error: 'No pudimos verificar el cupón. Probá de nuevo.' }
+    }
+  }
+
+  function quitarCupon() {
+    setCupon(null)
+  }
+
+  // Apenas la persona ingresa con Google:
+  // 1) si había un cupón esperando (ej: venía de un QR), se aplica
+  // 2) si no hay ningún cupón puesto, se prueba el de bienvenida (si ya lo usó, no pasa nada)
+  useEffect(() => {
+    if (!cargado || !sesionLista || !usuario) return
+
+    let pendiente = null
+    try {
+      pendiente = localStorage.getItem(CLAVE_CUPON_PENDIENTE)
+      if (pendiente) localStorage.removeItem(CLAVE_CUPON_PENDIENTE)
+    } catch {}
+
+    if (pendiente) {
+      aplicarCupon(pendiente)
+      return
+    }
+
+    if (!cupon) {
+      const claveProbada = `${CLAVE_BIENVENIDA_PROBADA}_${usuario.id}`
+      let yaProbada = false
+      try {
+        yaProbada = Boolean(sessionStorage.getItem(claveProbada))
+      } catch {}
+      if (!yaProbada) {
+        aplicarCupon(CODIGO_BIENVENIDA).then((resultado) => {
+          // Se marca como probada solo si el servidor contestó de verdad (lo aplicó o lo rechazó).
+          // Si falló por red o por falta de sesión, se reintenta la próxima vez.
+          if (resultado.ok || (!resultado.loginRequerido && !resultado.errorDeRed)) {
+            try {
+              sessionStorage.setItem(claveProbada, '1')
+            } catch {}
+          }
+        })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargado, sesionLista, usuario])
+
+  async function pagar(datosCliente, recaptchaToken) {
+    const respuesta = await fetch('/api/crear-preferencia', {
+      method: 'POST',
+      headers: await cabecerasConSesion(),
+      body: JSON.stringify({
+        items,
+        zonaEnvio,
+        datosCliente,
+        recaptchaToken,
+        cuponCodigo: cupon?.codigo || null,
+      }),
+    })
+
+    const datos = await respuesta.json()
+
+    if (datos.init_point) {
+      window.location.href = datos.init_point
+    } else {
+      const error = new Error(datos.error || 'No se pudo generar el link de pago')
+      error.cuponInvalido = Boolean(datos.cupon_invalido)
+      throw error
+    }
+  }
+
+  const totalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+
+  // Cupón: descuenta solo los productos y solo si se llega a la compra mínima
+  const cuponAplica = Boolean(cupon) && totalProductos >= (Number(cupon.compra_minima) || 0)
+  const descuentoCupon = cuponAplica ? calcularDescuentoCupon(cupon, totalProductos) : 0
+  const totalProductosConCupon = totalProductos - descuentoCupon
+
+  // Envío gratis desde cierto monto de productos, medido DESPUÉS del cupón (ver configEnvioGratis.js)
+  const envioGratis = totalProductosConCupon >= UMBRAL_ENVIO_GRATIS
+  const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - totalProductosConCupon)
+  const costoEnvio = calcularCostoEnvio(totalProductosConCupon, zonaEnvio)
+  const total = totalProductosConCupon + costoEnvio
+  const cantidadTotal = items.reduce((acc, item) => acc + item.cantidad, 0)
+
+  return (
+    <CarritoContext.Provider
+      value={{
+        items,
+        agregarAlCarrito,
+        quitarDelCarrito,
+        actualizarCantidad,
+        vaciarCarrito,
+        total,
+        totalProductos,
+        totalProductosConCupon,
+        costoEnvio,
+        envioGratis,
+        faltaParaEnvioGratis,
+        cantidadTotal,
+        pagar,
+        zonaEnvio,
+        setZonaEnvio,
+        cupon,
+        cuponAplica,
+        descuentoCupon,
+        aplicarCupon,
+        quitarCupon,
+        usuario,
+        sesionLista,
+        iniciarSesionGoogle,
+        cerrarSesion,
+        cabecerasConSesion,
+        panelAbierto,
+        abrirPanel,
+        cerrarPanel,
+        alternarPanel,
+      }}
+    >
+      {children}
+    </CarritoContext.Provider>
+  )
+}
+
+export function useCarrito() {
+  return useContext(CarritoContext)
+}
+
+===== src\lib\configConfeccion.js =====
+// Tiempo de confección de los pedidos.
+// Archivo: src/lib/configConfeccion.js
+//
+// Para cambiar el plazo que ven los clientes (sitio, carrito, checkout y emails):
+// cambiá DEMANDA_ACTUAL entre 'alta' y 'baja', guardá y hacé git push.
+
+export const DEMANDA_ACTUAL = 'baja' // 'alta' | 'baja'
+
+// Plazos en días corridos
+export const PLAZOS_CONFECCION = {
+  alta: { min: 7, max: 12 },
+  baja: { min: 4, max: 7 },
+}
+
+// Los números del plazo actual: { min, max }. Los usa la cotización de envíos para sumar los días.
+export function plazoConfeccion() {
+  return PLAZOS_CONFECCION[DEMANDA_ACTUAL] || PLAZOS_CONFECCION.alta
+}
+
+export function textoConfeccion() {
+  const plazo = plazoConfeccion()
+  return `${plazo.min} a ${plazo.max} días corridos`
+}
+
+
+===== src\lib\configCupones.js =====
+// Archivo: src/lib/configCupones.js
+// Funciones puras (sin base de datos): las usan tanto el navegador como el servidor.
+//
+// Reglas de los cupones:
+// - Descuentan solo los productos, no el envío.
+// - Se aplican ANTES del 5% de transferencia (el 5% se calcula sobre el precio ya con cupón).
+// - El monto del envío gratis se mide DESPUÉS del cupón.
+
+export function normalizarCodigo(texto) {
+  return String(texto || '').trim().toUpperCase().replace(/\s+/g, '')
+}
+
+// Cuánto descuenta el cupón sobre el subtotal de productos. Nunca más que el subtotal.
+export function calcularDescuentoCupon(cupon, subtotal) {
+  if (!cupon || !(subtotal > 0)) return 0
+  const valor = Number(cupon.valor) || 0
+  const bruto = cupon.tipo === 'porcentaje' ? Math.round((subtotal * valor) / 100) : Math.round(valor)
+  return Math.max(0, Math.min(bruto, subtotal))
+}
+
+export function etiquetaDescuento(cupon) {
+  if (cupon.tipo === 'porcentaje') return `−${Number(cupon.valor)}%`
+  return `−$${Number(cupon.valor).toLocaleString('es-AR')}`
+}
+
+// Texto de la línea que queda en el pedido, el admin y los emails
+export function nombreLineaCupon(cupon) {
+  return `Cupón ${cupon.codigo} (${etiquetaDescuento(cupon)})`
+}
+
+
+===== src\lib\configEnvioGratis.js =====
+// Envío gratis a partir de cierto monto.
+// Archivo: src/lib/configEnvioGratis.js
+//
+// El monto se compara contra el total de los PRODUCTOS (antes del descuento por transferencia
+// y sin contar el envío). Para cambiar el monto, editá UMBRAL_ENVIO_GRATIS y hacé git push.
+
+export const UMBRAL_ENVIO_GRATIS = 150000
+
+// Cuando el envío es gratis, el cliente NO elige empresa: el sistema la elige solo.
+// Orden de preferencia (siempre a domicilio). Se usa la primera que tenga tarifa para su código postal.
+export const EMPRESAS_ENVIO_GRATIS = ['urbano', 'oca']
+
+// Dentro de cada empresa se prefiere este servicio (OCA lo llama "Sucursal a puerta").
+// Si no aparece, se usa el más barato de los que llegan a la puerta del cliente.
+export const SERVICIOS_PREFERIDOS = ['sucursal a puerta']
+
+// Si ninguna de las anteriores llega a ese código postal, se usa la a domicilio más barata de
+// cualquier otra empresa, para no perder la venta. Poné false si preferís que no se pueda comprar.
+export const USAR_OTRAS_EMPRESAS_SI_FALTAN = true
+
+// Lo que se guarda como "zona de envío" cuando el envío es gratis (el cliente no ve la empresa)
+export const ID_ENVIO_GRATIS_AUTO = 'envio-gratis-auto'
+export const NOMBRE_ENVIO_GRATIS = 'Envío gratis a domicilio'
+
+// Devuelve el costo de envío que realmente se cobra
+export function calcularCostoEnvio(subtotalProductos, zonaEnvio) {
+  if (!zonaEnvio) return 0
+  if (subtotalProductos >= UMBRAL_ENVIO_GRATIS) return 0
+  return Number(zonaEnvio.costo) || 0
+}
+
+function normalizar(texto) {
+  return String(texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+// Una opción es "a domicilio" si el cliente la recibe en su puerta.
+// OCA: "Sucursal a puerta" y "Puerta a puerta" llegan al domicilio; "Sucursal a sucursal" y
+// "Puerta a sucursal" no (el destino es una sucursal).
+function esADomicilio(opcion) {
+  const texto = `${normalizar(opcion.service)} ${normalizar(opcion.serviceCode)}`
+  if (/\ba\s+(sucursal|agencia|punto|locker)/.test(texto)) return false
+  if (/puerta|domicilio|home|door/.test(texto)) return true
+  if (/sucursal|agencia|punto|retiro|pickup|locker/.test(texto)) return false
+  if (opcion.branches?.length > 0) return false
+  return true
+}
+
+function esServicioPreferido(opcion) {
+  const texto = `${normalizar(opcion.service)} ${normalizar(opcion.serviceCode)}`
+  return SERVICIOS_PREFERIDOS.some((s) => texto.includes(s))
+}
+
+// Primero el servicio preferido y, entre iguales, el más barato
+function ordenar(opciones) {
+  return [...opciones].sort(
+    (a, b) =>
+      Number(esServicioPreferido(b)) - Number(esServicioPreferido(a)) || precioDe(a) - precioDe(b)
+  )
+}
+
+function precioDe(opcion) {
+  return Number(opcion.price) || 0
+}
+
+// De todas las tarifas que devuelve la cotización, elige la que se usa cuando el envío es gratis
+export function elegirOpcionEnvioGratis(opciones) {
+  const aDomicilio = (opciones || []).filter(esADomicilio)
+
+  for (const empresa of EMPRESAS_ENVIO_GRATIS) {
+    const candidatas = aDomicilio.filter((o) =>
+      `${normalizar(o.carrierSlug)} ${normalizar(o.carrier)}`.includes(empresa)
+    )
+    if (candidatas.length > 0) {
+      return ordenar(candidatas)[0]
+    }
+  }
+
+  if (USAR_OTRAS_EMPRESAS_SI_FALTAN && aDomicilio.length > 0) {
+    return ordenar(aDomicilio)[0]
+  }
+
+  return null
+}
+
+===== src\lib\configTransferencia.js =====
+// Configuración del pago por transferencia bancaria.
+
+// Descuento por pagar con transferencia (0.05 = 5%). Se aplica solo a los productos, no al envío.
+export const DESCUENTO_TRANSFERENCIA = 0.05
+
+// Estos datos los ve el cliente al terminar el pedido y en el email.
+export const DATOS_BANCARIOS = {
+  titular: 'ABEL BRIAN NYGAARD',
+  banco: 'Banco Macro',
+  alias: 'dimedeti-ambos',
+  cbu: '2850596140096116920578',
+  cuit: '', // opcional: si lo dejás vacío no se muestra
+}
+
+// WhatsApp del negocio, para que el cliente mande el comprobante.
+// REVISAR: tiene que ser el número al que querés que te lleguen los comprobantes (con código de país, sin + ni espacios).
+export const WHATSAPP_NEGOCIO = '5491178197073'
+
+===== src\lib\cupones.js =====
+// DESTINO: src/lib/cupones.js  (reemplaza el archivo actual)
+// SOLO para el servidor (rutas api): valida cupones, anota sus usos y reconoce
+// a la persona que ingresó con Google.
+
+import { createClient } from '@supabase/supabase-js'
+import { normalizarCodigo, calcularDescuentoCupon } from '@/lib/configCupones'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+// Mensaje único para todos los casos, así nadie puede averiguar qué códigos existen
+const MENSAJE_NO_VALIDO = 'El cupón no es válido o ya no está disponible.'
+export const MENSAJE_LOGIN = 'Para usar un cupón ingresá con Google.'
+export const MENSAJE_YA_USADO = 'Ya usaste este cupón con tu cuenta.'
+
+// Lee la sesión de Google que el navegador manda en la cabecera Authorization.
+// Devuelve el usuario, o null si no hay sesión válida.
+export async function usuarioDesdeRequest(request) {
+  const cabecera = request.headers.get('authorization') || ''
+  const token = cabecera.startsWith('Bearer ') ? cabecera.slice(7).trim() : ''
+  if (!token) return null
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token)
+  if (error || !data?.user) return null
+  return data.user
+}
+
+// ¿Esta cuenta ya usó este cupón?
+async function cuentaYaUsoCupon(userId, codigo) {
+  const { data, error } = await supabaseAdmin
+    .from('cupones_usos')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error al revisar los usos del cupón:', error)
+    return false
+  }
+  return Boolean(data)
+}
+
+// Comprueba que el cupón exista y esté vigente (sin mirar el monto de la compra).
+// Si se pasa userId, también comprueba que esa cuenta no lo haya usado antes.
+export async function buscarCuponValido(codigoCrudo, userId = null) {
+  const codigo = normalizarCodigo(codigoCrudo)
+  if (!codigo) return { ok: false, error: 'Ingresá un código de cupón.' }
+
+  const { data: cupon, error } = await supabaseAdmin
+    .from('cupones')
+    .select('*')
+    .eq('codigo', codigo)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error al buscar el cupón:', error)
+    return { ok: false, error: 'No pudimos verificar el cupón. Probá de nuevo.' }
+  }
+
+  if (!cupon || !cupon.activo) return { ok: false, error: MENSAJE_NO_VALIDO }
+
+  const ahora = new Date()
+  if (cupon.fecha_inicio && new Date(cupon.fecha_inicio) > ahora) return { ok: false, error: MENSAJE_NO_VALIDO }
+  if (cupon.fecha_fin && new Date(cupon.fecha_fin) < ahora) return { ok: false, error: MENSAJE_NO_VALIDO }
+  if (cupon.max_usos != null && cupon.usos >= cupon.max_usos) return { ok: false, error: MENSAJE_NO_VALIDO }
+
+  if (userId && (await cuentaYaUsoCupon(userId, cupon.codigo))) {
+    return { ok: false, error: MENSAJE_YA_USADO }
+  }
+
+  return { ok: true, cupon }
+}
+
+// Valida el cupón contra el subtotal real del pedido y calcula el descuento
+export async function validarCuponParaPedido(codigo, subtotal, userId = null) {
+  const resultado = await buscarCuponValido(codigo, userId)
+  if (!resultado.ok) return resultado
+
+  const minimo = Number(resultado.cupon.compra_minima) || 0
+  if (subtotal < minimo) {
+    return {
+      ok: false,
+      error: `Este cupón requiere una compra mínima de $${minimo.toLocaleString('es-AR')} en productos.`,
+    }
+  }
+
+  const descuento = calcularDescuentoCupon(resultado.cupon, subtotal)
+  if (descuento <= 0) return { ok: false, error: MENSAJE_NO_VALIDO }
+
+  return { ok: true, cupon: resultado.cupon, descuento }
+}
+
+// Suma un uso de forma atómica. Devuelve false si el cupón se agotó justo en ese momento.
+export async function usarCupon(codigo) {
+  const { data, error } = await supabaseAdmin.rpc('usar_cupon', { p_codigo: codigo })
+  if (error) {
+    console.error('Error al registrar el uso del cupón:', error)
+    return false
+  }
+  return data === true
+}
+
+// Devuelve el uso si el pedido no se pudo completar
+export async function devolverUsoCupon(codigo) {
+  const { error } = await supabaseAdmin.rpc('devolver_uso_cupon', { p_codigo: codigo })
+  if (error) console.error('Error al devolver el uso del cupón:', error)
+}
+
+// Anota que esta cuenta usó el cupón. Devuelve 'ok', 'ya_usado' o 'error'.
+// El índice único de la base impide que una misma cuenta lo use dos veces,
+// aunque dos pedidos lleguen al mismo tiempo.
+export async function reservarUsoCuenta(userId, codigo, pedidoRef = null) {
+  const { error } = await supabaseAdmin.from('cupones_usos').insert({
+    user_id: userId,
+    codigo,
+    pedido_id: pedidoRef != null ? String(pedidoRef) : null,
+  })
+
+  if (!error) return 'ok'
+  if (error.code === '23505') return 'ya_usado'
+  console.error('Error al anotar el uso del cupón por cuenta:', error)
+  return 'error'
+}
+
+// Deshace la anotación si el pedido no se pudo completar
+export async function liberarUsoCuenta(userId, codigo) {
+  const { error } = await supabaseAdmin
+    .from('cupones_usos')
+    .delete()
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+  if (error) console.error('Error al liberar el uso del cupón por cuenta:', error)
+}
+
+// Une el uso del cupón con el número de pedido (para tener el registro completo)
+export async function vincularUsoConPedido(userId, codigo, pedidoId) {
+  const { error } = await supabaseAdmin
+    .from('cupones_usos')
+    .update({ pedido_id: String(pedidoId) })
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+  if (error) console.error('Error al vincular el uso del cupón con el pedido:', error)
+}
+
+// Mercado Pago no acepta líneas con precio negativo: el descuento se reparte entre los
+// precios de los productos, proporcionalmente, y la suma queda igual al total con cupón.
+export function repartirDescuentoEnItems(items, descuento) {
+  if (!descuento || descuento <= 0) return items
+
+  const subtotal = items.reduce((acc, i) => acc + i.unit_price * i.quantity, 0)
+  if (subtotal <= 0) return items
+
+  let restante = descuento
+  return items.map((item, idx) => {
+    const totalLinea = item.unit_price * item.quantity
+    const esUltima = idx === items.length - 1
+    let descLinea = esUltima ? restante : Math.round((descuento * totalLinea) / subtotal)
+    descLinea = Math.max(0, Math.min(descLinea, totalLinea, restante))
+    restante -= descLinea
+    const nuevoPrecio = Math.round(((totalLinea - descLinea) / item.quantity) * 100) / 100
+    return { ...item, unit_price: nuevoPrecio }
+  })
+}
+
+===== src\lib\enviarEmails.js =====
+import { Resend } from 'resend'
+import { DATOS_BANCARIOS, WHATSAPP_NEGOCIO } from './configTransferencia'
+import { textoConfeccion } from './configConfeccion'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+function formatearItems(items) {
+  return items
+    .map((item) => {
+      const foto = item.imagen_url
+        ? `<td style="width: 64px; padding-right: 12px; vertical-align: top;">
+             <table role="presentation" width="64" height="64" style="width: 64px; height: 64px; background-color: #FAF6F0; border: 1px solid #E4DCCF; border-radius: 8px;">
+               <tr>
+                 <td align="center" valign="middle" style="text-align: center; vertical-align: middle;">
+                   <img src="${item.imagen_url}" alt="${item.nombre}" width="56" style="max-width: 56px; max-height: 56px; display: block; margin: 0 auto;" />
+                 </td>
+               </tr>
+             </table>
+           </td>`
+        : ''
+
+      // Una línea con precio negativo es un descuento (ej: transferencia)
+      const subtotal = item.precio * item.cantidad
+      const importe = subtotal < 0 ? `-$${Math.abs(subtotal)}` : `$${subtotal}`
+      const detalle = subtotal < 0 ? importe : `Cantidad: ${item.cantidad} — ${importe}`
+
+      return `
+        <table role="presentation" width="100%" style="margin-bottom: 10px;">
+          <tr>
+            ${foto}
+            <td style="vertical-align: top; font-size: 14px; color: #2E2A26;">
+              <div>${item.nombre}</div>
+              <div style="color: #8A8378;">${detalle}</div>
+            </td>
+          </tr>
+        </table>
+      `
+    })
+    .join('')
+}
+
+// Bloque de entrega para los emails al cliente: tiempo de confección y, si corresponde, aviso de retiro
+function bloqueEntrega(pedido) {
+  const esRetiro = pedido.zona_envio === 'Retiro en persona'
+  return `
+          <p style="color: #2E2A26;"><strong>Tiempo de confección estimado:</strong> ${textoConfeccion()}.</p>
+          ${esRetiro ? '<p style="color: #2E2A26;"><strong>Retiro en persona:</strong> te avisamos por WhatsApp o por email cuando tu pedido esté listo, y coordinamos el día y el horario para retirarlo.</p>' : ''}`
+}
+
+   function lineaEnvio(pedido) {
+     if (!pedido.zona_envio) return ''
+     const esRetiro = pedido.zona_envio === 'Retiro en persona'
+     const texto =
+       Number(pedido.costo_envio) === 0 && !esRetiro
+         ? 'Costo de envío: ¡Gratis!'
+         : `Envío (${pedido.zona_envio}): $${pedido.costo_envio}`
+     return `<p style="margin: 10px 0 0; color: #2E2A26;">${texto}</p>`
+   }
+
+function formatearDireccion(direccion) {
+  if (!direccion) return ''
+  const partes = [
+    `${direccion.calle} ${direccion.numero}`,
+    direccion.pisoDepto ? direccion.pisoDepto : null,
+    direccion.ciudad,
+    direccion.codigoPostal ? `CP ${direccion.codigoPostal}` : null,
+  ].filter(Boolean)
+  return partes.join(', ')
+}
+
+export async function enviarEmailConfirmacionCliente(pedido) {
+  if (!pedido.comprador_email) return
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: pedido.comprador_email,
+      replyTo: 'abel.nygaard@gmail.com',
+      subject: '¡Gracias por tu compra! - dimedetiambos',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">¡Gracias por tu compra, ${pedido.cliente_nombre || ''}!</h2>
+          <p style="color: #2E2A26;">Recibimos tu pedido y ya está siendo procesado.</p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
+            <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
+            ${formatearItems(pedido.items)}
+         ${lineaEnvio(pedido)}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
+          </div>
+
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueEntrega(pedido)}
+          ${pedido.factura_pdf_url ? `<p><a href="${pedido.factura_pdf_url}" style="color: #2F6B63;">📄 Ver tu factura</a></p>` : ''}
+
+          <p style="margin-top: 24px; color: #8A8378; font-size: 14px;">
+            Cualquier consulta, respondé este mail o escribinos por WhatsApp.
+          </p>
+        </div>
+      `,
+    })
+      if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email enviado OK:', data)
+    }
+  } catch (error) {
+    console.error('Error al enviar email de confirmación al cliente:', error)
+  }
+}
+
+export async function enviarEmailNotificacionVenta(pedido) {
+  const emailAdmin = process.env.ADMIN_NOTIFICATION_EMAIL
+  if (!emailAdmin) return
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: emailAdmin,
+      subject: `Nueva venta 💰 - $${pedido.total}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">Nueva venta aprobada</h2>
+
+          <p style="color: #2E2A26;"><strong>Cliente:</strong> ${pedido.cliente_nombre || 'Sin nombre'}</p>
+          <p style="color: #2E2A26;"><strong>Email:</strong> ${pedido.comprador_email || '-'}</p>
+          <p style="color: #2E2A26;"><strong>Teléfono:</strong> ${pedido.cliente_telefono || '-'}</p>
+          <p style="color: #2E2A26;"><strong>DNI:</strong> ${pedido.cliente_dni || '-'}</p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
+            ${formatearItems(pedido.items)}
+         ${lineaEnvio(pedido)}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
+          </div>
+
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
+
+          <p style="margin-top: 20px; font-size: 13px; color: #8A8378;">
+            ${pedido.metodo_pago === 'transferencia' ? `Pedido #${pedido.id} · pagado por transferencia` : `Pago #${pedido.mercadopago_payment_id}`}
+          </p>
+        </div>
+      `,
+    })
+      if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email enviado OK:', data)
+    }
+  } catch (error) {
+    console.error('Error al enviar email de notificación de venta:', error)
+  }
+}
+
+// ---------- Pago por transferencia ----------
+
+// Al cliente, apenas hace el pedido: con los datos para transferir
+export async function enviarEmailInstruccionesTransferencia(pedido) {
+  if (!pedido.comprador_email) return
+
+  const mensajeWhatsApp = `Hola! Hice el pedido #${pedido.id} por transferencia por $${pedido.total}. Te mando el comprobante.`
+  const linkWhatsApp = `https://wa.me/${WHATSAPP_NEGOCIO}?text=${encodeURIComponent(mensajeWhatsApp)}`
+
+  const filasBancarias = [
+    ['Titular', DATOS_BANCARIOS.titular],
+    ['Banco', DATOS_BANCARIOS.banco],
+    ['Alias', DATOS_BANCARIOS.alias],
+    ['CBU', DATOS_BANCARIOS.cbu],
+    ['CUIT', DATOS_BANCARIOS.cuit],
+  ]
+    .filter(([, valor]) => valor)
+    .map(
+      ([etiqueta, valor]) =>
+        `<p style="margin: 4px 0; color: #2E2A26;"><strong>${etiqueta}:</strong> ${valor}</p>`
+    )
+    .join('')
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: pedido.comprador_email,
+      replyTo: 'abel.nygaard@gmail.com',
+      subject: `Tu pedido #${pedido.id}: datos para la transferencia - dimedetiambos`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">¡Recibimos tu pedido, ${pedido.cliente_nombre || ''}!</h2>
+          <p style="color: #2E2A26;">Pedido <strong>#${pedido.id}</strong>. Para confirmarlo, hacé la transferencia con estos datos:</p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
+            <p style="margin: 0 0 4px; color: #8A8378; font-size: 13px;">Total a transferir</p>
+            <p style="margin: 0 0 14px; font-weight: bold; font-size: 24px; color: #2F6B63;">$${pedido.total}</p>
+            ${filasBancarias}
+          </div>
+
+          <p style="color: #2E2A26;">
+            Después, mandanos el comprobante por WhatsApp indicando tu número de pedido:
+          </p>
+          <p style="margin: 16px 0;">
+            <a href="${linkWhatsApp}" style="background-color: #2F6B63; color: #ffffff; padding: 12px 20px; border-radius: 999px; text-decoration: none; font-weight: bold; display: inline-block;">
+              Enviar comprobante por WhatsApp
+            </a>
+          </p>
+          <p style="color: #2E2A26;">
+            Cuando veamos el pago te lo confirmamos por mail y empezamos a confeccionar tu pedido.
+          </p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
+            <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
+            ${formatearItems(pedido.items)}
+         ${lineaEnvio(pedido)}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
+          </div>
+
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueEntrega(pedido)}
+
+          <p style="margin-top: 24px; color: #8A8378; font-size: 14px;">
+            Cualquier consulta, respondé este mail o escribinos por WhatsApp.
+          </p>
+        </div>
+      `,
+    })
+    if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email de transferencia enviado OK:', data)
+    }
+  } catch (error) {
+    console.error('Error al enviar email de instrucciones de transferencia:', error)
+  }
+}
+
+// A Abel: hay un pedido esperando que confirme el pago
+export async function enviarEmailNotificacionTransferencia(pedido) {
+  const emailAdmin = process.env.ADMIN_NOTIFICATION_EMAIL
+  if (!emailAdmin) return
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: emailAdmin,
+      subject: `Pedido por transferencia pendiente 🏦 - $${pedido.total}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">Pedido #${pedido.id} por transferencia</h2>
+          <p style="color: #2E2A26;">Está <strong>pendiente de pago</strong>. Cuando veas la plata en tu cuenta, confirmalo desde el admin.</p>
+
+          <p style="color: #2E2A26;"><strong>Cliente:</strong> ${pedido.cliente_nombre || 'Sin nombre'}</p>
+          <p style="color: #2E2A26;"><strong>Email:</strong> ${pedido.comprador_email || '-'}</p>
+          <p style="color: #2E2A26;"><strong>Teléfono:</strong> ${pedido.cliente_telefono || '-'}</p>
+          <p style="color: #2E2A26;"><strong>DNI:</strong> ${pedido.cliente_dni || '-'}</p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
+            ${formatearItems(pedido.items)}
+         ${lineaEnvio(pedido)}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total a recibir: $${pedido.total}</p>
+          </div>
+
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
+
+          <p style="margin-top: 20px;">
+            <a href="https://www.dimedetiambos.com.ar/admin" style="color: #2F6B63; font-weight: bold;">Ir al panel para confirmar el pago</a>
+          </p>
+        </div>
+      `,
+    })
+    if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email de aviso de transferencia enviado OK:', data)
+    }
+  } catch (error) {
+    console.error('Error al enviar email de aviso de transferencia:', error)
+  }
+}
+
+===== src\lib\generarFacturaPdf.js =====
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import QRCode from 'qrcode'
+
+export async function generarFacturaPdf({ pedido, resultado, puntoVenta, tipoComprobante, numeroComprobante }) {
+  const pdfDoc = await PDFDocument.create()
+  const page = pdfDoc.addPage([595, 842]) // A4
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+
+  let y = 800
+
+  const dibujarTexto = (texto, x, tamano = 11, negrita = false) => {
+    page.drawText(texto, {
+      x,
+      y,
+      size: tamano,
+      font: negrita ? fontBold : font,
+      color: rgb(0, 0, 0),
+    })
+  }
+
+  dibujarTexto('Dimedeti Ambos', 40, 18, true)
+  y -= 20
+  dibujarTexto('FACTURA C', 40, 14, true)
+  y -= 20
+  dibujarTexto(`Punto de Venta: ${String(puntoVenta).padStart(4, '0')}  Comp. Nro: ${String(numeroComprobante).padStart(8, '0')}`, 40)
+  y -= 40
+
+  dibujarTexto(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 40)
+  y -= 20
+  dibujarTexto(`CUIT: ${process.env.AFIP_CUIT}`, 40)
+  y -= 20
+  dibujarTexto('Condición frente al IVA: Monotributo', 40)
+  y -= 40
+
+  dibujarTexto(`Cliente: ${pedido.cliente_nombre || 'Consumidor Final'}`, 40)
+  y -= 20
+  if (pedido.cliente_dni) {
+    dibujarTexto(`DNI: ${pedido.cliente_dni}`, 40)
+    y -= 20
+  }
+  y -= 20
+
+  dibujarTexto('Detalle:', 40, 12, true)
+  y -= 20
+  for (const item of pedido.items || []) {
+    if (item.nombre?.toLowerCase().startsWith('envío')) continue
+
+    // Una línea con precio negativo es un descuento (ej: pago por transferencia)
+    const importe = item.precio * item.cantidad
+    const linea =
+      importe < 0
+        ? `${item.nombre} — -$${Math.abs(importe)}`
+        : `${item.cantidad} x ${item.nombre} — $${item.precio}`
+
+    dibujarTexto(linea, 50)
+    y -= 18
+  }
+  y -= 20
+
+  dibujarTexto(`TOTAL: $${pedido.total}`, 40, 14, true)
+  y -= 50
+
+  dibujarTexto(`CAE: ${resultado.CAE}`, 40)
+  y -= 20
+  dibujarTexto(`Vencimiento CAE: ${resultado.CAEFchVto}`, 40)
+  y -= 60
+
+  // QR fiscal obligatorio (RG 4291)
+  const qrPayload = {
+    ver: 1,
+    fecha: new Date().toISOString().slice(0, 10),
+    cuit: Number(process.env.AFIP_CUIT),
+    ptoVta: puntoVenta,
+    tipoCmp: tipoComprobante,
+    nroCmp: numeroComprobante,
+    importe: Number(pedido.total),
+    moneda: 'PES',
+    ctz: 1,
+    tipoDocRec: pedido.cliente_dni ? 96 : 99,
+    nroDocRec: pedido.cliente_dni ? Number(pedido.cliente_dni.replace(/\D/g, '')) : 0,
+    tipoCodAut: 'E',
+    codAut: Number(resultado.CAE),
+  }
+
+  const qrUrl = `https://www.afip.gob.ar/fe/qr/?p=${Buffer.from(JSON.stringify(qrPayload)).toString('base64')}`
+  const qrDataUrl = await QRCode.toDataURL(qrUrl)
+  const qrImageBytes = Buffer.from(qrDataUrl.split(',')[1], 'base64')
+  const qrImage = await pdfDoc.embedPng(qrImageBytes)
+
+  page.drawImage(qrImage, { x: 40, y: y - 100, width: 100, height: 100 })
+
+  return await pdfDoc.save()
+}
+
+===== src\lib\guardarPedido.js =====
+// DESTINO: src/lib/guardarPedido.js  (reemplaza el archivo actual)
+import { MercadoPagoConfig, Payment } from 'mercadopago'
+import { createClient } from '@supabase/supabase-js'
+import { enviarEmailConfirmacionCliente, enviarEmailNotificacionVenta } from './enviarEmails'
+import { generarFactura } from './generarFactura'
+import { reservarUsoCuenta } from './cupones'
+
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
+})
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+export async function guardarPedido(paymentId) {
+  const payment = new Payment(client)
+  const pago = await payment.get({ id: paymentId })
+
+  const itemsOriginales = pago.metadata?.items_originales || []
+
+  const items = pago.additional_info?.items?.map((item, idx) => ({
+    nombre: item.title,
+    cantidad: item.quantity,
+    precio: item.unit_price,
+    imagen_url: itemsOriginales[idx]?.imagen_url || null,
+  })) || []
+
+  // Ver si este pedido ya existía antes con estado aprobado (para no reprocesar/duplicar emails)
+  const { data: pedidoExistente } = await supabaseAdmin
+    .from('pedidos')
+    .select('estado')
+    .eq('mercadopago_payment_id', String(paymentId))
+    .maybeSingle()
+
+  const yaEstabaAprobado = pedidoExistente?.estado === 'approved'
+
+  const datosCliente = pago.metadata?.datos_cliente || {}
+  const zonaEnvio = pago.metadata?.zona_envio || null
+
+  const { error } = await supabaseAdmin
+    .from('pedidos')
+    .upsert(
+      {
+        mercadopago_payment_id: String(paymentId),
+        estado: pago.status,
+        total: pago.transaction_amount,
+        items: items,
+        comprador_email: datosCliente.email || pago.payer?.email || null,
+        cliente_nombre: datosCliente.nombre || null,
+        cliente_dni: datosCliente.dni || null,
+        cliente_telefono: datosCliente.telefono || null,
+        direccion: datosCliente.calle
+          ? {
+              calle: datosCliente.calle,
+              numero: datosCliente.numero,
+              pisoDepto: datosCliente.pisoDepto || datosCliente.piso_depto || null,
+              ciudad: datosCliente.ciudad,
+              codigoPostal: datosCliente.codigoPostal || datosCliente.codigo_postal || null,
+            }
+          : null,
+        zona_envio: zonaEnvio?.nombre || null,
+        costo_envio: zonaEnvio?.costo || 0,
+        envio_carrier: zonaEnvio?.envioCarrier || zonaEnvio?.envio_carrier || null,
+        envio_service_code: zonaEnvio?.envioServiceCode || zonaEnvio?.envio_service_code || null,
+        envio_branch_code: zonaEnvio?.envioBranchCode || zonaEnvio?.envio_branch_code || null,
+        notas: datosCliente.notas || null,
+      },
+      { onConflict: 'mercadopago_payment_id' }
+    )
+
+  if (error) {
+    console.error('Error al guardar el pedido:', error)
+    throw new Error('Error al guardar el pedido')
+  }
+
+  // Pago aprobado por primera vez: si llevaba cupón, se anota que esa cuenta ya lo usó
+  // (si el pago nunca se aprobaba, la persona podía volver a intentar con el mismo cupón)
+  if (pago.status === 'approved' && !yaEstabaAprobado) {
+    const cuponUsado = pago.metadata?.cupon
+    const usuarioId = pago.metadata?.usuario_id
+    if (cuponUsado?.codigo && usuarioId) {
+      await reservarUsoCuenta(usuarioId, cuponUsado.codigo, paymentId)
+    }
+  }
+
+  // Enviar emails solo si el pago quedó aprobado Y es la primera vez que lo procesamos
+  if (pago.status === 'approved' && !yaEstabaAprobado) {
+    const pedidoGuardado = {
+      cliente_nombre: datosCliente.nombre || null,
+      comprador_email: datosCliente.email || pago.payer?.email || null,
+      cliente_telefono: datosCliente.telefono || null,
+      cliente_dni: datosCliente.dni || null,
+      items,
+      total: pago.transaction_amount,
+      zona_envio: zonaEnvio?.nombre || null,
+      costo_envio: zonaEnvio?.costo || 0,
+      direccion: datosCliente.calle
+        ? {
+            calle: datosCliente.calle,
+            numero: datosCliente.numero,
+            pisoDepto: datosCliente.pisoDepto || datosCliente.piso_depto || null,
+            ciudad: datosCliente.ciudad,
+            codigoPostal: datosCliente.codigoPostal || datosCliente.codigo_postal || null,
+          }
+        : null,
+      notas: datosCliente.notas || null,
+      mercadopago_payment_id: String(paymentId),
+    }
+
+    let facturaInfo = null
+    try {
+      facturaInfo = await generarFactura({ ...pedidoGuardado, factura_cae: null })
+      if (!facturaInfo.yaExistia) {
+        await supabaseAdmin
+          .from('pedidos')
+          .update({
+            factura_cae: facturaInfo.cae,
+            factura_vencimiento_cae: facturaInfo.vencimiento,
+            factura_numero: facturaInfo.numero,
+            factura_pdf_url: facturaInfo.pdfUrl,
+          })
+          .eq('mercadopago_payment_id', String(paymentId))
+      }
+    } catch (error) {
+      console.error('Error al generar factura automática:', error)
+    }
+
+    await enviarEmailConfirmacionCliente({ ...pedidoGuardado, factura_pdf_url: facturaInfo?.pdfUrl || null })
+    await enviarEmailNotificacionVenta(pedidoGuardado)
+  }
+
+  return pago
+}
+
+===== src\lib\transferencias.js =====
+// Confirmar el pago de un pedido por transferencia.
+// Esta función NO verifica quién la llama: la ruta de API que la usa chequea esAdmin() antes.
+
+import { createClient } from '@supabase/supabase-js'
+import { generarFactura } from './generarFactura'
+import { enviarEmailConfirmacionCliente, enviarEmailNotificacionVenta } from './enviarEmails'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+// Genera la factura y la guarda en el pedido. Devuelve la info, o null si falló.
+async function facturarPedido(pedido) {
+  try {
+    const facturaInfo = await generarFactura({ ...pedido, factura_cae: null })
+    if (facturaInfo.yaExistia) return null
+
+    const { error } = await supabaseAdmin
+      .from('pedidos')
+      .update({
+        factura_cae: facturaInfo.cae,
+        factura_vencimiento_cae: facturaInfo.vencimiento,
+        factura_numero: facturaInfo.numero,
+        factura_pdf_url: facturaInfo.pdfUrl,
+      })
+      .eq('id', pedido.id)
+
+    if (error) {
+      console.error('La factura se emitió pero no se pudo guardar en el pedido:', error, facturaInfo)
+    }
+    return facturaInfo
+  } catch (error) {
+    console.error('Error al generar la factura de transferencia:', error)
+    return null
+  }
+}
+
+// Marca el pedido como pagado, factura por el total con descuento y avisa al cliente y al vendedor.
+export async function confirmarPagoTransferencia(pedidoId) {
+  const { data: pedido, error } = await supabaseAdmin
+    .from('pedidos')
+    .select('*')
+    .eq('id', pedidoId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!pedido) return { ok: false, error: 'No existe ese pedido' }
+  if (pedido.metodo_pago !== 'transferencia') {
+    return { ok: false, error: 'Ese pedido no es por transferencia' }
+  }
+
+  // Ya estaba pagado: solo reintenta la factura si había fallado, sin mandar otro email
+  if (pedido.estado === 'approved') {
+    if (pedido.factura_cae) return { ok: true, yaConfirmado: true, facturaOk: true }
+    const factura = await facturarPedido(pedido)
+    return { ok: true, yaConfirmado: true, facturaOk: Boolean(factura) }
+  }
+
+  // El cambio de estado solo se aplica si sigue pendiente: si el botón se toca dos veces
+  // a la vez, una sola pasa y no se factura ni se manda el mail por duplicado
+  const { data: actualizados, error: errorEstado } = await supabaseAdmin
+    .from('pedidos')
+    .update({ estado: 'approved' })
+    .eq('id', pedidoId)
+    .eq('estado', 'pending')
+    .select('id')
+
+  if (errorEstado) throw errorEstado
+  if (!actualizados || actualizados.length === 0) {
+    return { ok: true, yaConfirmado: true, facturaOk: Boolean(pedido.factura_cae) }
+  }
+
+  const factura = await facturarPedido(pedido)
+
+  const pedidoPagado = {
+    ...pedido,
+    estado: 'approved',
+    factura_pdf_url: factura?.pdfUrl || null,
+  }
+
+  // Al cliente: confirmación de pago
+  await enviarEmailConfirmacionCliente(pedidoPagado)
+
+  // Al vendedor: aviso de venta confirmada (igual que con Mercado Pago)
+  await enviarEmailNotificacionVenta(pedidoPagado)
+
+  return { ok: true, yaConfirmado: false, facturaOk: Boolean(factura) }
+}

@@ -14,7 +14,7 @@ const CLAVE_CUPON_PENDIENTE = 'dimedetiambos_cupon_pendiente'
 const CLAVE_BIENVENIDA_PROBADA = 'dimedetiambos_bienvenida_probada'
 
 // Cupón de bienvenida (se crea desde el panel admin con este mismo código)
-const CODIGO_BIENVENIDA = 'BIENVENIDA5'
+const CODIGO_BIENVENIDA = 'BIENVENIDA'
 
 export function CarritoProvider({ children }) {
   const [items, setItems] = useState([])
@@ -50,7 +50,15 @@ export function CarritoProvider({ children }) {
 
       if (itemsGuardados) setItems(JSON.parse(itemsGuardados))
       if (zonaGuardada) setZonaEnvio(JSON.parse(zonaGuardada))
-      if (cuponGuardado) setCupon(JSON.parse(cuponGuardado))
+      if (cuponGuardado) {
+        const cuponParseado = JSON.parse(cuponGuardado)
+        // No restaurar códigos antiguos: BIENVENIDA5 y CUPON10 se reemplazaron.
+        if (!['BIENVENIDA5', 'CUPON10'].includes(String(cuponParseado?.codigo || '').toUpperCase())) {
+          setCupon(cuponParseado)
+        } else {
+          localStorage.removeItem(CLAVE_CUPON)
+        }
+      }
     } catch (err) {
       console.error('Error al leer el carrito guardado:', err)
     } finally {
