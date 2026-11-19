@@ -1,287 +1,160 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { useCarrito } from '@/lib/carrito'
+import { etiquetaDescuento } from '@/lib/configCupones'
 import SelectorEnvio from './checkout/SelectorEnvio'
+import './carrito.css'
+
+const pesos = (n) => new Intl.NumberFormat('es-AR', {
+  style: 'currency', currency: 'ARS', maximumFractionDigits: 0,
+}).format(Number(n) || 0)
 
 export default function CarritoIcono() {
   const {
-    items,
-    cantidadTotal,
-    totalProductos,
-    costoEnvio,
-    envioGratis,
-    total,
-    zonaEnvio,
-    quitarDelCarrito,
-    actualizarCantidad,
-    vaciarCarrito,
-    panelAbierto,
-    abrirPanel,
-    cerrarPanel,
+    items, cantidadTotal, totalProductos, costoEnvio, envioGratis, total,
+    zonaEnvio, quitarDelCarrito, actualizarCantidad, vaciarCarrito,
+    panelAbierto, abrirPanel, cerrarPanel,
+    cupon, cuponAplica, descuentoCupon,
   } = useCarrito()
+
+  const hayCupon = Boolean(cupon) && cuponAplica && descuentoCupon > 0
+
+  // Con el panel abierto: Escape lo cierra y la página de atrás no se desplaza
+  useEffect(() => {
+    if (!panelAbierto) return
+    const alTeclear = (e) => {
+      if (e.key === 'Escape') cerrarPanel()
+    }
+    const overflowAnterior = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', alTeclear)
+    return () => {
+      document.body.style.overflow = overflowAnterior
+      document.removeEventListener('keydown', alTeclear)
+    }
+    // cerrarPanel solo cambia el estado del panel, no hace falta volver a registrar el listener en cada render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelAbierto])
 
   return (
     <>
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={abrirPanel}
-          style={{
-            padding: '10px 16px',
-            border: '1px solid #ccc',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            backgroundColor: '#fff',
-            fontSize: '15px',
-          }}
-        >
-          🛒 {cantidadTotal}
-        </button>
-      </div>
+      <button type="button" className="dm-cart-trigger" onClick={abrirPanel}
+        aria-label={`Abrir carrito, ${cantidadTotal} prendas`}>
+        <span className="dm-cart-trigger-icon" aria-hidden="true">🛍</span>
+        <span className="dm-cart-trigger-label">Mi carrito</span>
+        <span className="dm-cart-count" key={cantidadTotal}>{cantidadTotal}</span>
+      </button>
 
-      {panelAbierto &&
-        createPortal(
-          <>
-            {/* Fondo oscuro: al tocarlo, cierra el panel */}
-            <div
-              onClick={cerrarPanel}
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                width: '100vw',
-                height: '100dvh',
-                backgroundColor: 'rgba(0, 0, 0, 0.4)',
-                zIndex: 1500,
-              }}
-            />
-
-            {/* Panel lateral del carrito */}
-            <div
-              style={{
-                position: 'fixed',
-                top: 0,
-                right: 0,
-                height: '100dvh',
-                width: '340px',
-                maxWidth: '90vw',
-                backgroundColor: 'white',
-                boxShadow: '-4px 0 16px rgba(0,0,0,0.15)',
-                padding: '20px',
-                zIndex: 1501,
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0 }}>Tu carrito</h3>
-                <button
-                  onClick={cerrarPanel}
-                  style={{
-                    border: 'none',
-                    background: '#f5f5f5',
-                    borderRadius: '50%',
-                    width: '32px',
-                    height: '32px',
-                    fontSize: '18px',
-                    cursor: 'pointer',
-                    color: '#333',
-                  }}
-                  title="Cerrar"
-                >
-                  ✕
-                </button>
+      {panelAbierto && typeof document !== 'undefined' && createPortal(
+        <>
+          <button type="button" className="dm-cart-overlay" onClick={cerrarPanel}
+            aria-label="Cerrar carrito" />
+          <aside className="dm-cart-drawer" role="dialog" aria-modal="true"
+            aria-label="Tu carrito de compras">
+            <header className="dm-cart-header">
+              <div>
+                <span className="dm-cart-eyebrow">DIMEDETI AMBOS</span>
+                <h2>Tu carrito</h2>
+                <p>{cantidadTotal === 1 ? '1 prenda seleccionada' : `${cantidadTotal} prendas seleccionadas`}</p>
               </div>
+              <button type="button" className="dm-cart-close" onClick={cerrarPanel}
+                aria-label="Cerrar carrito">×</button>
+            </header>
 
-              {items.length > 0 && (
-                <button
-                  onClick={() => {
-                    if (confirm('¿Vaciar todo el carrito?')) {
-                      vaciarCarrito()
-                    }
-                  }}
-                  style={{
-                    marginTop: '10px',
-                    alignSelf: 'flex-start',
-                    border: 'none',
-                    background: 'none',
-                    color: '#888',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                    padding: 0,
-                  }}
-                >
-                  Vaciar carrito
-                </button>
-              )}
+            {items.length > 0 && (
+              <div className="dm-cart-toolbar">
+                <span>Tu selección</span>
+                <button type="button" onClick={() => {
+                  if (confirm('¿Querés vaciar todo el carrito?')) vaciarCarrito()
+                }}>Vaciar carrito</button>
+              </div>
+            )}
 
-              {items.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#888', marginTop: '30px' }}>
-                  Tu carrito está vacío
-                </p>
-              ) : (
-                <>
-                  <div style={{ marginTop: '16px' }}>
+            {items.length === 0 ? (
+              <div className="dm-cart-empty">
+                <span className="dm-cart-empty-icon" aria-hidden="true">🛍</span>
+                <h3>Tu carrito está vacío</h3>
+                <p>Descubrí nuestros ambos, chaquetas y pantalones.</p>
+                <Link href="/" onClick={cerrarPanel} className="dm-cart-primary">Explorar la tienda</Link>
+              </div>
+            ) : (
+              <>
+                <div className="dm-cart-content">
+                  <div className="dm-cart-items">
                     {items.map((item) => (
-                      <div
-                        key={`${item.id}-${item.variante_id || ''}`}
-                        style={{
-                          padding: '12px 0',
-                          borderBottom: '1px solid #eee',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                            <p style={{ margin: 0, fontWeight: 'bold', fontSize: '14px' }}>
-                              {item.nombre} {item.color ? `(${item.color})` : ''}
-                            </p>
-                            {item.talle && (
-                              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#888' }}>
-                                Talle: {item.talle}
-                              </p>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => quitarDelCarrito(item.id, item.variante_id)}
-                            style={{
-                              border: 'none',
-                              background: 'none',
-                              color: '#dc2626',
-                              cursor: 'pointer',
-                              fontSize: '16px',
-                              padding: '2px 6px',
-                            }}
-                            title="Quitar"
-                          >
-                            ✕
-                          </button>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-                            <button
-                              onClick={() => actualizarCantidad(item.id, item.variante_id, item.cantidad - 1)}
-                              style={{
-                                width: '28px',
-                                height: '28px',
-                                fontSize: '15px',
-                                border: '1px solid #ccc',
-                                borderRadius: '6px 0 0 6px',
-                                backgroundColor: '#fff',
-                                cursor: 'pointer',
-                                color: '#333',
-                              }}
-                            >
-                              −
-                            </button>
-                            <div
-                              style={{
-                                width: '34px',
-                                height: '28px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                border: '1px solid #ccc',
-                                borderLeft: 'none',
-                                borderRight: 'none',
-                                fontSize: '13px',
-                                fontWeight: '600',
-                              }}
-                            >
-                              {item.cantidad}
+                      <article className="dm-cart-item"
+                        key={`${item.id}-${item.variante_id || ''}`}>
+                        <div className="dm-cart-item-main">
+                          <div className="dm-cart-item-info">
+                            <h3>{item.nombre}</h3>
+                            <div className="dm-cart-attributes">
+                              {item.color && <span>{item.color}</span>}
+                              {item.talle && <span>Talle {item.talle}</span>}
                             </div>
-                            <button
-                              onClick={() => actualizarCantidad(item.id, item.variante_id, item.cantidad + 1)}
-                              style={{
-                                width: '28px',
-                                height: '28px',
-                                fontSize: '15px',
-                                border: '1px solid #ccc',
-                                borderRadius: '0 6px 6px 0',
-                                backgroundColor: '#fff',
-                                cursor: 'pointer',
-                                color: '#333',
-                              }}
-                            >
-                              +
-                            </button>
                           </div>
-                          <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>
-                            ${item.cantidad * item.precio}
-                          </p>
+                          <button type="button" className="dm-cart-remove"
+                            onClick={() => quitarDelCarrito(item.id, item.variante_id)}
+                            aria-label={`Quitar ${item.nombre} del carrito`}>×</button>
                         </div>
-                      </div>
+                        <div className="dm-cart-item-bottom">
+                          <div className="dm-cart-quantity">
+                            <span className="dm-cart-quantity-label">Cantidad</span>
+                            <div className="dm-cart-quantity-control">
+                              <button type="button" aria-label="Disminuir cantidad"
+                                onClick={() => actualizarCantidad(item.id, item.variante_id, item.cantidad - 1)}>−</button>
+                              <span>{item.cantidad}</span>
+                              <button type="button" aria-label="Aumentar cantidad"
+                                onClick={() => actualizarCantidad(item.id, item.variante_id, item.cantidad + 1)}>+</button>
+                            </div>
+                          </div>
+                          <strong className="dm-cart-item-price">{pesos(item.cantidad * item.precio)}</strong>
+                        </div>
+                      </article>
                     ))}
                   </div>
 
-                  <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #ddd' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px' }}>
-                      <span>Subtotal</span>
-                      <span>${totalProductos}</span>
+                  <section className="dm-cart-shipping">
+                    <div className="dm-cart-section-heading">
+                      <span className="dm-cart-step">01</span>
+                      <div><h3>¿Cómo lo recibís?</h3><p>Calculá las opciones de entrega para tu pedido.</p></div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px', color: '#666' }}>
-                      <span>
-                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona'
-                          ? 'Costo de envío'
-                          : `Envío ${zonaEnvio ? `(${zonaEnvio.nombre})` : '(sin elegir)'}`}
-                      </span>
-                      <span>
-                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona' ? (
-                          <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
-                        ) : (
-                          `$${costoEnvio}`
-                        )}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '18px', marginTop: '8px' }}>
-                      <span>Total</span>
-                      <span>${total}</span>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: '14px' }}>
                     <SelectorEnvio />
-                  </div>
+                  </section>
+                </div>
 
-                  <Link
-                    href="/checkout"
-                    style={{
-                      display: 'block',
-                      marginTop: 'auto',
-                      position: 'sticky',
-                      bottom: 0,
-                      backgroundColor: 'white',
-                      paddingTop: '10px',
-                      paddingBottom: '10px',
-                      zIndex: 1,
-                    }}
-                  >
-                    <button
-                      onClick={cerrarPanel}
-                      style={{
-                        width: '100%',
-                        marginTop: '16px',
-                        padding: '12px',
-                        backgroundColor: '#009ee3',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '15px',
-                      }}
-                    >
-                      Finalizar compra
-                    </button>
+                <footer className="dm-cart-footer">
+                  <div className="dm-cart-summary">
+                    <div className="dm-cart-summary-line"><span>Subtotal</span><span>{pesos(totalProductos)}</span></div>
+                    {hayCupon && (
+                      <div className="dm-cart-summary-line">
+                        <span>Cupón {cupon.codigo} ({etiquetaDescuento(cupon)})</span>
+                        <strong>−{pesos(descuentoCupon)}</strong>
+                      </div>
+                    )}
+                    <div className="dm-cart-summary-line">
+                      <span>{envioGratis && zonaEnvio?.nombre !== 'Retiro en persona'
+                        ? 'Envío' : `Envío${zonaEnvio ? ` · ${zonaEnvio.nombre}` : ' · A calcular'}`}</span>
+                      <strong>
+                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona' ? '¡Gratis!' : pesos(costoEnvio)}
+                      </strong>
+                    </div>
+                    <div className="dm-cart-total"><span>Total estimado</span><strong>{pesos(total)}</strong></div>
+                    <p className="dm-cart-note">El total final se confirma al completar tus datos de compra.</p>
+                  </div>
+                  <Link href="/checkout" className="dm-cart-primary dm-cart-checkout" onClick={cerrarPanel}>
+                    Continuar con la compra <span aria-hidden="true">→</span>
                   </Link>
-                </>
-              )}
-            </div>
-          </>,
-          document.body
-        )}
+                  <button type="button" className="dm-cart-continue" onClick={cerrarPanel}>Seguir mirando</button>
+                </footer>
+              </>
+            )}
+          </aside>
+        </>,
+        document.body
+      )}
     </>
   )
 }
