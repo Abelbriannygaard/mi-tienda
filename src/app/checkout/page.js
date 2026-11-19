@@ -79,16 +79,16 @@ export default function Checkout() {
   const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
   const conTransferencia = metodoPago === 'transferencia'
 
-  // Los descuentos NO se acumulan: se aplica solo el más alto.
-  // Si empatan (ej. 5% de cupón y 5% de transferencia) queda el de transferencia y el cupón no se gasta.
-  const montoTransferencia = Math.round(totalProductos * DESCUENTO_TRANSFERENCIA)
+  // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
+  // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
   const hayCupon = cuponAplica && descuentoCupon > 0
-  const transferenciaGana = conTransferencia && (!hayCupon || montoTransferencia >= descuentoCupon)
-  const cuponEnUso = hayCupon && !transferenciaGana
+  const cuponEnUso = hayCupon
   const descuentoCuponEfectivo = cuponEnUso ? descuentoCupon : 0
-  const descuentoTransferenciaEfectivo = transferenciaGana ? montoTransferencia : 0
-
   const subtotalEfectivo = totalProductos - descuentoCuponEfectivo
+
+  const montoTransferencia = Math.round(subtotalEfectivo * DESCUENTO_TRANSFERENCIA)
+  const transferenciaGana = conTransferencia
+  const descuentoTransferenciaEfectivo = conTransferencia ? montoTransferencia : 0
   const envioGratisEfectivo = subtotalEfectivo >= UMBRAL_ENVIO_GRATIS
   const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - subtotalEfectivo)
   const costoEnvioEfectivo = calcularCostoEnvio(subtotalEfectivo, zonaEnvio)
@@ -251,9 +251,9 @@ export default function Checkout() {
             Cupón {cupon.codigo} ({etiquetaDescuento(cupon)}): −${descuentoCuponEfectivo}
           </p>
         )}
-        {hayCupon && transferenciaGana && (
-          <p style={{ fontSize: '14px', color: '#a16207' }}>
-            Tu cupón {cupon.codigo} no se suma al descuento por transferencia: se aplica el mayor.
+        {hayCupon && conTransferencia && (
+          <p style={{ fontSize: '14px', color: '#15803d' }}>
+            ¡Tu cupón {cupon.codigo} se suma al descuento por transferencia!
           </p>
         )}
         {envioGratisEfectivo && !esRetiro ? (
@@ -476,7 +476,7 @@ export default function Checkout() {
               <br />
               <small style={{ color: '#666' }}>
                 Ahorrás ${montoTransferencia}. Te mostramos los datos al terminar el pedido.
-                {hayCupon && ' No se suma al cupón: se aplica el descuento mayor.'}
+                {hayCupon && ' Se suma a tu cupón.'}
               </small>
             </span>
           </label>

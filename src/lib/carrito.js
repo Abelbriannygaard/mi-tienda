@@ -218,7 +218,7 @@ export function CarritoProvider({ children }) {
       setCupon(datos.cupon)
       return { ok: true, cupon: datos.cupon }
     } catch (err) {
-      return { ok: false, error: 'No pudimos verificar el cupón. Probá de nuevo.' }
+      return { ok: false, errorDeRed: true, error: 'No pudimos verificar el cupón. Probá de nuevo.' }
     }
   }
 
@@ -244,12 +244,22 @@ export function CarritoProvider({ children }) {
     }
 
     if (!cupon) {
+      const claveProbada = `${CLAVE_BIENVENIDA_PROBADA}_${usuario.id}`
       let yaProbada = false
       try {
-        yaProbada = Boolean(sessionStorage.getItem(CLAVE_BIENVENIDA_PROBADA))
-        sessionStorage.setItem(CLAVE_BIENVENIDA_PROBADA, '1')
+        yaProbada = Boolean(sessionStorage.getItem(claveProbada))
       } catch {}
-      if (!yaProbada) aplicarCupon(CODIGO_BIENVENIDA)
+      if (!yaProbada) {
+        aplicarCupon(CODIGO_BIENVENIDA).then((resultado) => {
+          // Se marca como probada solo si el servidor contestó de verdad (lo aplicó o lo rechazó).
+          // Si falló por red o por falta de sesión, se reintenta la próxima vez.
+          if (resultado.ok || (!resultado.loginRequerido && !resultado.errorDeRed)) {
+            try {
+              sessionStorage.setItem(claveProbada, '1')
+            } catch {}
+          }
+        })
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargado, sesionLista, usuario])

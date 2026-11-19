@@ -97,11 +97,8 @@ export async function POST(request) {
 
     const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
 
-    // Los descuentos NO se acumulan: se aplica solo el más alto.
-    // Si empatan (ej. 5% de cupón y 5% de transferencia) queda el de transferencia
-    // y el cupón no se gasta.
-    const descuentoTransferenciaPosible = Math.round(subtotal * DESCUENTO_TRANSFERENCIA)
-
+    // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
+    // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
     let cupon = null
     let descuentoCupon = 0
 
@@ -121,37 +118,34 @@ export async function POST(request) {
         return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
       }
 
-      if (validacion.descuento > descuentoTransferenciaPosible) {
-        const reservado = await usarCupon(validacion.cupon.codigo)
-        if (!reservado) {
-          return NextResponse.json(
-            { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
-            { status: 400 }
-          )
-        }
-        cuponReservado = validacion.cupon.codigo
-
-        const uso = await reservarUsoCuenta(usuario.id, validacion.cupon.codigo)
-        if (uso !== 'ok') {
-          await deshacerReservas()
-          return NextResponse.json(
-            {
-              error: uso === 'ya_usado' ? MENSAJE_YA_USADO : 'No pudimos verificar el cupón. Probá de nuevo.',
-              cupon_invalido: true,
-            },
-            { status: 400 }
-          )
-        }
-        usoCuentaReservado = { userId: usuario.id, codigo: validacion.cupon.codigo }
-
-        cupon = validacion.cupon
-        descuentoCupon = validacion.descuento
+      const reservado = await usarCupon(validacion.cupon.codigo)
+      if (!reservado) {
+        return NextResponse.json(
+          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+          { status: 400 }
+        )
       }
+      cuponReservado = validacion.cupon.codigo
+
+      const uso = await reservarUsoCuenta(usuario.id, validacion.cupon.codigo)
+      if (uso !== 'ok') {
+        await deshacerReservas()
+        return NextResponse.json(
+          {
+            error: uso === 'ya_usado' ? MENSAJE_YA_USADO : 'No pudimos verificar el cupón. Probá de nuevo.',
+            cupon_invalido: true,
+          },
+          { status: 400 }
+        )
+      }
+      usoCuentaReservado = { userId: usuario.id, codigo: validacion.cupon.codigo }
+
+      cupon = validacion.cupon
+      descuentoCupon = validacion.descuento
     }
 
-    // Se aplica uno solo: el cupón (si ganó) o el de transferencia
-    const descuento = cupon ? 0 : descuentoTransferenciaPosible
     const subtotalConCupon = subtotal - descuentoCupon
+    const descuento = Math.round(subtotalConCupon * DESCUENTO_TRANSFERENCIA)
     const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
     const total = subtotalConCupon - descuento + costoEnvio
 
