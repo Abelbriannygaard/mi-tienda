@@ -117,10 +117,6 @@ export default function CarritoIcono() {
                   </div>
 
                   <section className="dm-cart-shipping">
-                    <div className="dm-cart-section-heading">
-                      <span className="dm-cart-step">01</span>
-                      <div><h3>¿Cómo lo recibís?</h3><p>Calculá las opciones de entrega para tu pedido.</p></div>
-                    </div>
                     <SelectorEnvio />
                   </section>
                 </div>
