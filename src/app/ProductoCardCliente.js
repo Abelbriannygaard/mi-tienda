@@ -1,10 +1,10 @@
+// DESTINO: src/app/ProductoCardCliente.js  (reemplaza el archivo actual; va en la misma carpeta que ProductoCard.js)
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
 import { createPortal } from 'react-dom'
 import { useCarrito } from '@/lib/carrito'
-import { textoConfeccion } from '@/lib/configConfeccion'
 import { track } from '@/lib/fbq'
 
 // Fotos de TABLA DE TALLES que no deben aparecer nunca en la tarjeta del home.
@@ -249,17 +249,10 @@ function handleAgregar() {
               </div>
             )}
 
-            <div className="mt-5 rounded-xl border border-[#E4DCCF] bg-[#F3EEE6] px-3 py-2.5 text-sm text-[#2E2A26]">
-              <p className="font-semibold text-[#2F6B63]">🧵 Confeccionado a pedido</p>
-              <p className="mt-0.5 text-[#5C564C]">
-                Tiempo de confección: <strong>{textoConfeccion()}</strong>
-              </p>
-            </div>
-
             <button
               onClick={handleAgregar}
               disabled={!varianteElegida || varianteElegida?.stock === 0}
-              className="mt-4 w-full rounded-full bg-[#2F6B63] py-3 text-sm font-semibold text-white transition hover:bg-[#28584F] disabled:bg-[#E4DCCF] disabled:text-[#8A8378]"
+              className="mt-5 w-full rounded-full bg-[#2F6B63] py-3 text-sm font-semibold text-white transition hover:bg-[#28584F] disabled:bg-[#E4DCCF] disabled:text-[#8A8378]"
             >
               {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
             </button>

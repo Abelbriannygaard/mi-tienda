@@ -1,10 +1,10 @@
+// DESTINO: src/app/producto/[id]/ProductoDetalle.js  (reemplaza el archivo actual)
 'use client'
 
 import CarritoIcono from '../../CarritoIcono'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useCarrito } from '@/lib/carrito'
-import { textoConfeccion } from '@/lib/configConfeccion'
 
 export default function ProductoDetalle({ producto, variantes }) {
   // 1. Extraer colores únicos
@@ -282,19 +282,11 @@ if (typeof window.fbq === 'function') {
               </div>
             )}
 
-            {/* Aviso de plazo de confección */}
-            <div className="mt-6 rounded-xl border border-[#E4DCCF] bg-[#F3EEE6] px-4 py-3 text-sm text-[#2E2A26]">
-              <p className="font-semibold text-[#2F6B63]">🧵 Confeccionado a pedido</p>
-              <p className="mt-0.5 text-[#5C564C]">
-                Tiempo de confección: <strong>{textoConfeccion()}</strong>. Después lo enviamos o queda listo para retirar.
-              </p>
-            </div>
-
             {/* Botón de Agregar al Carrito */}
             <button
               onClick={handleAgregar}
               disabled={!varianteElegida || varianteElegida?.stock === 0}
-              className="mt-4 w-full rounded-full bg-[#2F6B63] py-3 text-sm font-semibold text-white transition hover:bg-[#28584F] disabled:bg-[#E4DCCF] disabled:text-[#8A8378]"
+              className="mt-6 w-full rounded-full bg-[#2F6B63] py-3 text-sm font-semibold text-white transition hover:bg-[#28584F] disabled:bg-[#E4DCCF] disabled:text-[#8A8378]"
             >
               {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
             </button>

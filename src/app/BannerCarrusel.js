@@ -1,3 +1,4 @@
+// DESTINO: src/app/BannerCarrusel.js  (reemplaza el archivo actual)
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -6,9 +7,7 @@ import Link from 'next/link'
 
 const INTERVALO = 5000 // milisegundos entre tarjetas
 
-// "confeccion" llega desde page.js con textoConfeccion(), así los días
-// siempre coinciden con los del cartel verde de arriba.
-export default function BannerCarrusel({ confeccion }) {
+export default function BannerCarrusel() {
   // Para sumar o cambiar tarjetas, editá solo esta lista.
   // tipo 'imagen': usa un archivo de /public. tipo 'texto': título, subtítulo y detalle.
   // Si ponés href (por ejemplo '/producto/4'), la tarjeta lleva a esa página.
@@ -23,13 +22,6 @@ export default function BannerCarrusel({ confeccion }) {
       tipo: 'imagen',
       src: '/banner-descuento.png',
       alt: '5% de descuento pagando por transferencia',
-      href: null,
-    },
-    {
-      tipo: 'texto',
-      titulo: 'Confección a pedido',
-      subtitulo: 'Elegí tu talle y color, y lo hacemos para vos',
-      detalle: `${confeccion} · Envíos a todo el país`,
       href: null,
     },
   ]
