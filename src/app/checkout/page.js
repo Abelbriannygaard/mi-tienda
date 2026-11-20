@@ -14,6 +14,7 @@ import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
 import { textoConfeccion } from '@/lib/configConfeccion'
 import { ID_ENVIO_GRATIS_AUTO, UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
 import { etiquetaDescuento } from '@/lib/configCupones'
+import { TEXTO_RETIRO_CORTO } from '@/lib/configRetiro'
 import { track } from '@/lib/fbq'
 
 // BotonGoogle ahora está dentro del <form>: si su botón no tiene type="button", enviaría el checkout.
@@ -200,7 +201,7 @@ export default function Checkout() {
           return
         }
 
-        // La pantalla siguiente lee estos datos para mostrar el monto y el número de pedido
+        // La pantalla siguiente lee estos datos para mostrar el monto, el número de pedido y, si es retiro, dónde retirar
         sessionStorage.setItem(
           'pedido_transferencia',
           JSON.stringify({
@@ -208,6 +209,7 @@ export default function Checkout() {
             total: data.total,
             descuento: data.descuento,
             descuento_cupon: data.descuento_cupon || 0,
+            retiro: esRetiro,
           })
         )
 
@@ -494,6 +496,7 @@ export default function Checkout() {
                 <span>{esRetiro ? 'Retiro en persona' : 'Envío'}</span>
                 <strong>{esRetiro ? 'Gratis' : envioGratisEfectivo ? '¡Gratis!' : zonaEnvio ? `$${formatoPrecio(costoEnvioEfectivo)}` : 'A calcular'}</strong>
               </div>
+              {esRetiro && <p className="checkout-making-time">📍 {TEXTO_RETIRO_CORTO}.</p>}
               {!esRetiro && !envioGratisEfectivo && (
                 <p className="checkout-free-shipping-hint">Te faltan ${formatoPrecio(faltaParaEnvioGratis)} en productos para obtener envío gratis desde ${formatoPrecio(UMBRAL_ENVIO_GRATIS)}.</p>
               )}

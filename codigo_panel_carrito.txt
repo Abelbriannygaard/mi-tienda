@@ -1,0 +1,2971 @@
+
+===== src\app\admin\EditarDireccionBoton.js =====
+'use client'
+
+import { useState } from 'react'
+
+const inputStyle = {
+  width: '100%',
+  padding: '8px 10px',
+  fontSize: '14px',
+  borderRadius: '6px',
+  border: '1px solid #ccc',
+  marginBottom: '8px',
+  boxSizing: 'border-box',
+}
+
+export default function EditarDireccionBoton({ pedido }) {
+  const [abierto, setAbierto] = useState(false)
+  const [form, setForm] = useState({
+    calle: pedido.direccion?.calle || '',
+    numero: pedido.direccion?.numero || '',
+    pisoDepto: pedido.direccion?.pisoDepto || '',
+    ciudad: pedido.direccion?.ciudad || '',
+    codigoPostal: pedido.direccion?.codigoPostal || '',
+  })
+  const [cantidadBultos, setCantidadBultos] = useState(1)
+  const [opciones, setOpciones] = useState([])
+  const [opcionElegida, setOpcionElegida] = useState(null)
+  const [sucursalElegida, setSucursalElegida] = useState(null)
+  const [cotizando, setCotizando] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+  const [mensaje, setMensaje] = useState('')
+
+  function cambiar(campo, valor) {
+    setForm((f) => ({ ...f, [campo]: valor }))
+  }
+
+  async function cotizar() {
+    if (!form.codigoPostal) {
+      setMensaje('Ingresá el código postal')
+      return
+    }
+    setCotizando(true)
+    setMensaje('')
+    setOpciones([])
+    setOpcionElegida(null)
+    setSucursalElegida(null)
+    try {
+      const res = await fetch('/api/envios/cotizar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postalCode: form.codigoPostal, items: [{ cantidad: cantidadBultos }] }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        setMensaje(data.error || 'No se pudo cotizar')
+        return
+      }
+      setOpciones(data.rates || [])
+    } catch (e) {
+      setMensaje('Error de conexión al cotizar')
+    } finally {
+      setCotizando(false)
+    }
+  }
+
+  async function guardar() {
+    if (!form.calle || !form.numero || !form.ciudad || !form.codigoPostal) {
+      setMensaje('Completá la dirección')
+      return
+    }
+    setGuardando(true)
+    setMensaje('')
+    try {
+      const body = {
+        pedidoId: pedido.id,
+        direccion: form,
+      }
+      if (opcionElegida) {
+        body.envio = {
+          carrierSlug: opcionElegida.carrierSlug,
+          serviceCode: opcionElegida.serviceCode,
+          carrier: opcionElegida.carrier,
+          service: opcionElegida.service,
+          price: opcionElegida.price,
+          branchCode: sucursalElegida?.branchCode || null,
+        }
+      }
+      const res = await fetch('/api/admin/pedidos-editar-direccion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMensaje(data.error || 'No se pudo guardar')
+        return
+      }
+      setMensaje('Guardado. Recargá la página para ver los cambios.')
+    } catch (e) {
+      setMensaje('Error de conexión al guardar')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  if (!abierto) {
+    return (
+      <button
+        onClick={() => setAbierto(true)}
+        style={{
+          marginTop: '10px',
+          marginRight: '8px',
+          padding: '8px 14px',
+          fontSize: '13px',
+          fontWeight: '600',
+          borderRadius: '8px',
+          border: '1px solid #666',
+          backgroundColor: '#fff',
+          color: '#333',
+          cursor: 'pointer',
+        }}
+      >
+        ✏️ Editar dirección
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ marginTop: '12px', padding: '14px', borderRadius: '8px', border: '1px solid #ddd', backgroundColor: '#fafafa' }}>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ flex: 2 }}>
+          <input style={inputStyle} placeholder="Calle" value={form.calle} onChange={(e) => cambiar('calle', e.target.value)} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <input style={inputStyle} placeholder="Número" value={form.numero} onChange={(e) => cambiar('numero', e.target.value)} />
+        </div>
+      </div>
+      <input style={inputStyle} placeholder="Piso / Depto" value={form.pisoDepto} onChange={(e) => cambiar('pisoDepto', e.target.value)} />
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ flex: 2 }}>
+          <input style={inputStyle} placeholder="Ciudad" value={form.ciudad} onChange={(e) => cambiar('ciudad', e.target.value)} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <input style={inputStyle} placeholder="Código postal" value={form.codigoPostal} onChange={(e) => cambiar('codigoPostal', e.target.value)} />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+        <input
+          type="number"
+          min="1"
+          style={{ ...inputStyle, marginBottom: 0, width: '80px' }}
+          value={cantidadBultos}
+          onChange={(e) => setCantidadBultos(e.target.value)}
+        />
+        <button
+          onClick={cotizar}
+          disabled={cotizando}
+          style={{
+            padding: '8px 12px',
+            fontSize: '13px',
+            borderRadius: '6px',
+            border: 'none',
+            backgroundColor: '#009ee3',
+            color: '#fff',
+            cursor: cotizando ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {cotizando ? 'Cotizando...' : 'Volver a cotizar envío'}
+        </button>
+      </div>
+
+      {opciones.length > 0 && (
+        <div style={{ marginBottom: '10px' }}>
+          {opciones.map((op) => (
+            <div
+              key={op.id}
+              onClick={() => { setOpcionElegida(op); setSucursalElegida(null) }}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '6px',
+                border: opcionElegida?.id === op.id ? '2px solid #009ee3' : '1px solid #ddd',
+                marginBottom: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+              }}
+            >
+              <strong>{op.carrier} — {op.service}</strong> · ${op.price}
+            </div>
+          ))}
+
+          {opcionElegida?.branches?.length > 0 && (
+            <select
+              style={inputStyle}
+              value={sucursalElegida?.branchCode || ''}
+              onChange={(e) => {
+                const suc = opcionElegida.branches.find((b) => b.branchCode === e.target.value)
+                setSucursalElegida(suc || null)
+              }}
+            >
+              <option value="">Elegí una sucursal</option>
+              {opcionElegida.branches.map((b) => (
+                <option key={b.branchCode} value={b.branchCode}>{b.direccion}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {mensaje && <p style={{ fontSize: '13px', color: '#b91c1c', marginBottom: '8px' }}>{mensaje}</p>}
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button
+          onClick={guardar}
+          disabled={guardando}
+          style={{
+            padding: '8px 14px',
+            fontSize: '13px',
+            fontWeight: '600',
+            borderRadius: '6px',
+            border: 'none',
+            backgroundColor: '#15803d',
+            color: '#fff',
+            cursor: guardando ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {guardando ? 'Guardando...' : 'Guardar'}
+        </button>
+        <button
+          onClick={() => setAbierto(false)}
+          style={{
+            padding: '8px 14px',
+            fontSize: '13px',
+            borderRadius: '6px',
+            border: '1px solid #ccc',
+            backgroundColor: '#fff',
+            cursor: 'pointer',
+          }}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+===== src\app\admin\layout.js =====
+export const metadata = {
+  title: 'Dimedeti Admin',
+  description: 'Panel de administración de Dimedeti Ambos',
+  manifest: '/manifest.json',
+  icons: {
+    icon: '/icon-192.png',
+    apple: '/apple-touch-icon.png',
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Dimedeti Admin',
+  },
+}
+
+export default function AdminLayout({ children }) {
+  return children
+}
+
+===== src\app\api\crear-pedido-transferencia\route.js =====
+// DESTINO: src/app/api/crear-pedido-transferencia/route.js  (reemplaza el archivo actual)
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
+import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import { nombreLineaCupon } from '@/lib/configCupones'
+import {
+  validarCuponParaPedido,
+  usarCupon,
+  devolverUsoCupon,
+  usuarioDesdeRequest,
+  reservarUsoCuenta,
+  liberarUsoCuenta,
+  vincularUsoConPedido,
+  MENSAJE_LOGIN,
+  MENSAJE_YA_USADO,
+} from '@/lib/cupones'
+import {
+  enviarEmailInstruccionesTransferencia,
+  enviarEmailNotificacionTransferencia,
+} from '@/lib/enviarEmails'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+async function verificarRecaptcha(token) {
+  if (!token) return false
+
+  try {
+    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${token}`,
+    })
+
+    const data = await res.json()
+    return data.success && data.score >= 0.5 && data.action === 'checkout'
+  } catch (error) {
+    console.error('Error al verificar reCAPTCHA:', error)
+    return false
+  }
+}
+
+export async function POST(request) {
+  // Si el pedido no se llega a guardar, se devuelven los usos que se habían reservado
+  let cuponReservado = null
+  let usoCuentaReservado = null // { userId, codigo }
+
+  async function deshacerReservas() {
+    if (cuponReservado) {
+      await devolverUsoCupon(cuponReservado)
+      cuponReservado = null
+    }
+    if (usoCuentaReservado) {
+      await liberarUsoCuenta(usoCuentaReservado.userId, usoCuentaReservado.codigo)
+      usoCuentaReservado = null
+    }
+  }
+
+  try {
+    const { items, zonaEnvio, datosCliente, recaptchaToken, cuponCodigo } = await request.json()
+
+    const recaptchaValido = await verificarRecaptcha(recaptchaToken)
+    if (!recaptchaValido) {
+      return NextResponse.json(
+        { error: 'No pudimos verificar que sos una persona real. Recargá la página e intentá de nuevo.' },
+        { status: 400 }
+      )
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'Tu carrito está vacío' }, { status: 400 })
+    }
+    if (!zonaEnvio) {
+      return NextResponse.json({ error: 'Elegí una zona de envío' }, { status: 400 })
+    }
+    if (!datosCliente?.nombre || !datosCliente?.email) {
+      return NextResponse.json({ error: 'Faltan tus datos de contacto' }, { status: 400 })
+    }
+
+    // Mismo criterio que crear-preferencia: se toman nombre y precio del carrito.
+    // Se limpian cantidad y precio para que no entren valores raros.
+    const itemsPedido = items.map((item) => {
+      const cantidad = Math.max(1, parseInt(item.cantidad, 10) || 1)
+      const precio = Math.max(0, Number(item.precio) || 0)
+      const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null].filter(Boolean).join(' - ')
+
+      return {
+        nombre: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+        cantidad,
+        precio,
+        imagen_url: item.imagen_url || null,
+      }
+    })
+
+    const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+
+    // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
+    // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
+    let cupon = null
+    let descuentoCupon = 0
+
+    if (cuponCodigo) {
+      // Para usar un cupón hay que haber ingresado con Google
+      const usuario = await usuarioDesdeRequest(request)
+      if (!usuario) {
+        return NextResponse.json(
+          { error: MENSAJE_LOGIN, cupon_invalido: true, login_requerido: true },
+          { status: 401 }
+        )
+      }
+
+      // El cupón se valida y se calcula acá, nunca se confía en el descuento que manda el navegador
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotal, usuario.id)
+      if (!validacion.ok) {
+        return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
+      }
+
+      const reservado = await usarCupon(validacion.cupon.codigo)
+      if (!reservado) {
+        return NextResponse.json(
+          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+      cuponReservado = validacion.cupon.codigo
+
+      const uso = await reservarUsoCuenta(usuario.id, validacion.cupon.codigo)
+      if (uso !== 'ok') {
+        await deshacerReservas()
+        return NextResponse.json(
+          {
+            error: uso === 'ya_usado' ? MENSAJE_YA_USADO : 'No pudimos verificar el cupón. Probá de nuevo.',
+            cupon_invalido: true,
+          },
+          { status: 400 }
+        )
+      }
+      usoCuentaReservado = { userId: usuario.id, codigo: validacion.cupon.codigo }
+
+      cupon = validacion.cupon
+      descuentoCupon = validacion.descuento
+    }
+
+    const subtotalConCupon = subtotal - descuentoCupon
+    const descuento = Math.round(subtotalConCupon * DESCUENTO_TRANSFERENCIA)
+    const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
+    const total = subtotalConCupon - descuento + costoEnvio
+
+    // Los descuentos quedan como líneas con precio negativo, así todo suma igual
+    // en el admin, en los emails y en la factura
+    if (descuentoCupon > 0) {
+      itemsPedido.push({
+        nombre: nombreLineaCupon(cupon),
+        cantidad: 1,
+        precio: -descuentoCupon,
+        imagen_url: null,
+      })
+    }
+
+    if (descuento > 0) {
+      itemsPedido.push({
+        nombre: `Descuento por transferencia (${Math.round(DESCUENTO_TRANSFERENCIA * 100)}%)`,
+        cantidad: 1,
+        precio: -descuento,
+        imagen_url: null,
+      })
+    }
+
+    const direccion = datosCliente.calle
+      ? {
+          calle: datosCliente.calle,
+          numero: datosCliente.numero,
+          pisoDepto: datosCliente.pisoDepto || null,
+          ciudad: datosCliente.ciudad,
+          codigoPostal: datosCliente.codigoPostal || null,
+        }
+      : null
+
+    // La tabla identifica cada pedido por esta columna: se usa una referencia propia que arranca con TR-
+    const referencia =
+      'TR-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase()
+
+    const { data: pedido, error: errorInsert } = await supabaseAdmin
+      .from('pedidos')
+      .insert({
+        mercadopago_payment_id: referencia,
+        estado: 'pending',
+        metodo_pago: 'transferencia',
+        descuento,
+        cupon_codigo: cupon ? cupon.codigo : null,
+        descuento_cupon: descuentoCupon,
+        total,
+        items: itemsPedido,
+        comprador_email: datosCliente.email || null,
+        cliente_nombre: datosCliente.nombre || null,
+        cliente_dni: datosCliente.dni || null,
+        cliente_telefono: datosCliente.telefono || null,
+        direccion,
+        zona_envio: zonaEnvio.nombre || null,
+        costo_envio: costoEnvio,
+        envio_carrier: zonaEnvio.envioCarrier || zonaEnvio.envio_carrier || null,
+        envio_service_code: zonaEnvio.envioServiceCode || zonaEnvio.envio_service_code || null,
+        envio_branch_code: zonaEnvio.envioBranchCode || zonaEnvio.envio_branch_code || null,
+        notas: datosCliente.notas || null,
+      })
+      .select('id')
+      .single()
+
+    if (errorInsert) {
+      console.error('Error al guardar el pedido por transferencia:', errorInsert)
+      await deshacerReservas()
+      return NextResponse.json({ error: 'No se pudo guardar el pedido. Probá de nuevo.' }, { status: 500 })
+    }
+
+    // El pedido ya está guardado: los usos del cupón quedan firmes aunque falle algo después (por ejemplo un email)
+    if (usoCuentaReservado) {
+      await vincularUsoConPedido(usoCuentaReservado.userId, usoCuentaReservado.codigo, pedido.id)
+    }
+    cuponReservado = null
+    usoCuentaReservado = null
+
+    const pedidoParaEmail = {
+      id: pedido.id,
+      cliente_nombre: datosCliente.nombre || null,
+      comprador_email: datosCliente.email || null,
+      cliente_telefono: datosCliente.telefono || null,
+      cliente_dni: datosCliente.dni || null,
+      items: itemsPedido,
+      total,
+      zona_envio: zonaEnvio.nombre || null,
+      costo_envio: costoEnvio,
+      direccion,
+      notas: datosCliente.notas || null,
+    }
+
+    await enviarEmailInstruccionesTransferencia(pedidoParaEmail)
+    await enviarEmailNotificacionTransferencia(pedidoParaEmail)
+
+    return NextResponse.json({ pedido_id: pedido.id, total, descuento, descuento_cupon: descuentoCupon })
+  } catch (error) {
+    console.error('Error al crear pedido por transferencia:', error)
+    await deshacerReservas()
+    return NextResponse.json({ error: 'Error al crear el pedido' }, { status: 500 })
+  }
+}
+
+===== src\app\api\crear-preferencia\route.js =====
+// DESTINO: src/app/api/crear-preferencia/route.js  (reemplaza el archivo actual)
+import { MercadoPagoConfig, Preference } from 'mercadopago'
+import { NextResponse } from 'next/server'
+import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import {
+  validarCuponParaPedido,
+  usarCupon,
+  devolverUsoCupon,
+  repartirDescuentoEnItems,
+  usuarioDesdeRequest,
+  MENSAJE_LOGIN,
+} from '@/lib/cupones'
+
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
+})
+
+async function verificarRecaptcha(token) {
+  if (!token) return false
+
+  try {
+    const res = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${token}`,
+    })
+
+    const data = await res.json()
+
+    // score va de 0 (bot) a 1 (humano). 0.5 es el umbral recomendado por Google.
+    return data.success && data.score >= 0.5 && data.action === 'checkout'
+  } catch (error) {
+    console.error('Error al verificar reCAPTCHA:', error)
+    return false
+  }
+}
+
+export async function POST(request) {
+  // Si el pago no se llega a crear, se devuelve el uso del cupón que se había reservado
+  let cuponReservado = null
+
+  try {
+    const { items, zonaEnvio, datosCliente, recaptchaToken, cuponCodigo } = await request.json()
+
+    const recaptchaValido = await verificarRecaptcha(recaptchaToken)
+    if (!recaptchaValido) {
+      return NextResponse.json(
+        { error: 'No pudimos verificar que sos una persona real. Recargá la página e intentá de nuevo.' },
+        { status: 400 }
+      )
+    }
+
+    const subtotalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+
+    // Cupón: se valida y se calcula acá, nunca se confía en el descuento que manda el navegador.
+    // Para usar un cupón hay que haber ingresado con Google.
+    let cupon = null
+    let descuentoCupon = 0
+    let usuario = null
+
+    if (cuponCodigo) {
+      usuario = await usuarioDesdeRequest(request)
+      if (!usuario) {
+        return NextResponse.json(
+          { error: MENSAJE_LOGIN, cupon_invalido: true, login_requerido: true },
+          { status: 401 }
+        )
+      }
+
+      const validacion = await validarCuponParaPedido(cuponCodigo, subtotalProductos, usuario.id)
+      if (!validacion.ok) {
+        return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
+      }
+      if (validacion.descuento >= subtotalProductos) {
+        return NextResponse.json(
+          { error: 'Este cupón cubre todo el pedido y no se puede usar con Mercado Pago. Escribinos y lo resolvemos.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+
+      const reservado = await usarCupon(validacion.cupon.codigo)
+      if (!reservado) {
+        return NextResponse.json(
+          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+          { status: 400 }
+        )
+      }
+
+      cuponReservado = validacion.cupon.codigo
+      cupon = validacion.cupon
+      descuentoCupon = validacion.descuento
+    }
+
+    const preference = new Preference(client)
+
+    const itemsParaMP = items.map((item) => {
+      const detalles = [item.color, item.talle ? `Talle ${item.talle}` : null]
+        .filter(Boolean)
+        .join(' - ')
+
+      return {
+        id: String(item.id),
+        title: detalles ? `${item.nombre} (${detalles})` : item.nombre,
+        quantity: item.cantidad,
+        unit_price: item.precio,
+        currency_id: 'ARS',
+      }
+    })
+
+    // Mercado Pago no acepta líneas con precio negativo: el descuento del cupón se reparte
+    // entre los precios de los productos (el total queda correcto)
+    const itemsConCupon = repartirDescuentoEnItems(itemsParaMP, descuentoCupon)
+
+    // Envío gratis desde cierto monto (medido después del cupón): el costo se recalcula acá,
+    // no se confía en el del navegador
+    const subtotalConCupon = subtotalProductos - descuentoCupon
+    const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
+
+    if (zonaEnvio && costoEnvio > 0) {
+      itemsConCupon.push({
+        id: 'envio',
+        title: `Envío - ${zonaEnvio.nombre}`,
+        quantity: 1,
+        unit_price: costoEnvio,
+        currency_id: 'ARS',
+      })
+    }
+
+    // Guardamos también los items originales (con imagen_url) en metadata,
+    // porque Mercado Pago no permite campos custom dentro de "items".
+    const itemsOriginales = items.map((item) => ({
+      nombre: item.nombre,
+      color: item.color || null,
+      talle: item.talle || null,
+      imagen_url: item.imagen_url || null,
+    }))
+
+    const resultado = await preference.create({
+      body: {
+        items: itemsConCupon,
+        payer: {
+          name: datosCliente?.nombre,
+          email: datosCliente?.email,
+        },
+        metadata: {
+          datos_cliente: datosCliente,
+          zona_envio: zonaEnvio ? { ...zonaEnvio, costo: costoEnvio } : null,
+          items_originales: itemsOriginales,
+          cupon: cupon ? { codigo: cupon.codigo, descuento: descuentoCupon } : null,
+          // Quién usó el cupón: al aprobarse el pago, el webhook lo anota en esa cuenta
+          usuario_id: usuario ? usuario.id : null,
+        },
+        back_urls: {
+          success: 'https://www.dimedetiambos.com.ar/pago-exitoso',
+          failure: 'https://www.dimedetiambos.com.ar/pago-fallido',
+          pending: 'https://www.dimedetiambos.com.ar/pago-pendiente',
+        },
+        auto_return: 'approved',
+        notification_url: 'https://www.dimedetiambos.com.ar/api/webhook-mercadopago',
+      },
+    })
+
+    return NextResponse.json({ id: resultado.id, init_point: resultado.init_point })
+  } catch (error) {
+    console.error('Error al crear preferencia:', error)
+    if (cuponReservado) await devolverUsoCupon(cuponReservado)
+    return NextResponse.json({ error: 'Error al crear la preferencia de pago' }, { status: 500 })
+  }
+}
+
+===== src\app\CarritoIcono.js =====
+'use client'
+
+import Link from 'next/link'
+import { createPortal } from 'react-dom'
+import { useCarrito } from '@/lib/carrito'
+import SelectorEnvio from './checkout/SelectorEnvio'
+
+export default function CarritoIcono() {
+  const {
+    items,
+    cantidadTotal,
+    totalProductos,
+    costoEnvio,
+    envioGratis,
+    total,
+    zonaEnvio,
+    quitarDelCarrito,
+    actualizarCantidad,
+    vaciarCarrito,
+    panelAbierto,
+    abrirPanel,
+    cerrarPanel,
+  } = useCarrito()
+
+  return (
+    <>
+      <div style={{ position: 'relative' }}>
+        <button
+          onClick={abrirPanel}
+          style={{
+            padding: '10px 16px',
+            border: '1px solid #ccc',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            backgroundColor: '#fff',
+            fontSize: '15px',
+          }}
+        >
+          🛒 {cantidadTotal}
+        </button>
+      </div>
+
+      {panelAbierto &&
+        createPortal(
+          <>
+            {/* Fondo oscuro: al tocarlo, cierra el panel */}
+            <div
+              onClick={cerrarPanel}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100dvh',
+                backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                zIndex: 1500,
+              }}
+            />
+
+            {/* Panel lateral del carrito */}
+            <div
+              style={{
+                position: 'fixed',
+                top: 0,
+                right: 0,
+                height: '100dvh',
+                width: '340px',
+                maxWidth: '90vw',
+                backgroundColor: 'white',
+                boxShadow: '-4px 0 16px rgba(0,0,0,0.15)',
+                padding: '20px',
+                zIndex: 1501,
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>Tu carrito</h3>
+                <button
+                  onClick={cerrarPanel}
+                  style={{
+                    border: 'none',
+                    background: '#f5f5f5',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    fontSize: '18px',
+                    cursor: 'pointer',
+                    color: '#333',
+                  }}
+                  title="Cerrar"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {items.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (confirm('¿Vaciar todo el carrito?')) {
+                      vaciarCarrito()
+                    }
+                  }}
+                  style={{
+                    marginTop: '10px',
+                    alignSelf: 'flex-start',
+                    border: 'none',
+                    background: 'none',
+                    color: '#888',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                    padding: 0,
+                  }}
+                >
+                  Vaciar carrito
+                </button>
+              )}
+
+              {items.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#888', marginTop: '30px' }}>
+                  Tu carrito está vacío
+                </p>
+              ) : (
+                <>
+                  <div style={{ marginTop: '16px' }}>
+                    {items.map((item) => (
+                      <div
+                        key={`${item.id}-${item.variante_id || ''}`}
+                        style={{
+                          padding: '12px 0',
+                          borderBottom: '1px solid #eee',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <p style={{ margin: 0, fontWeight: 'bold', fontSize: '14px' }}>
+                              {item.nombre} {item.color ? `(${item.color})` : ''}
+                            </p>
+                            {item.talle && (
+                              <p style={{ margin: '2px 0 0', fontSize: '13px', color: '#888' }}>
+                                Talle: {item.talle}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => quitarDelCarrito(item.id, item.variante_id)}
+                            style={{
+                              border: 'none',
+                              background: 'none',
+                              color: '#dc2626',
+                              cursor: 'pointer',
+                              fontSize: '16px',
+                              padding: '2px 6px',
+                            }}
+                            title="Quitar"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+                            <button
+                              onClick={() => actualizarCantidad(item.id, item.variante_id, item.cantidad - 1)}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                fontSize: '15px',
+                                border: '1px solid #ccc',
+                                borderRadius: '6px 0 0 6px',
+                                backgroundColor: '#fff',
+                                cursor: 'pointer',
+                                color: '#333',
+                              }}
+                            >
+                              −
+                            </button>
+                            <div
+                              style={{
+                                width: '34px',
+                                height: '28px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                border: '1px solid #ccc',
+                                borderLeft: 'none',
+                                borderRight: 'none',
+                                fontSize: '13px',
+                                fontWeight: '600',
+                              }}
+                            >
+                              {item.cantidad}
+                            </div>
+                            <button
+                              onClick={() => actualizarCantidad(item.id, item.variante_id, item.cantidad + 1)}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                fontSize: '15px',
+                                border: '1px solid #ccc',
+                                borderRadius: '0 6px 6px 0',
+                                backgroundColor: '#fff',
+                                cursor: 'pointer',
+                                color: '#333',
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>
+                            ${item.cantidad * item.precio}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #ddd' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px' }}>
+                      <span>Subtotal</span>
+                      <span>${totalProductos}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '4px', color: '#666' }}>
+                      <span>
+                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona'
+                          ? 'Costo de envío'
+                          : `Envío ${zonaEnvio ? `(${zonaEnvio.nombre})` : '(sin elegir)'}`}
+                      </span>
+                      <span>
+                        {envioGratis && zonaEnvio?.nombre !== 'Retiro en persona' ? (
+                          <strong style={{ color: '#15803d' }}>¡Gratis!</strong>
+                        ) : (
+                          `$${costoEnvio}`
+                        )}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '18px', marginTop: '8px' }}>
+                      <span>Total</span>
+                      <span>${total}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '14px' }}>
+                    <SelectorEnvio />
+                  </div>
+
+                  <Link
+                    href="/checkout"
+                    style={{
+                      display: 'block',
+                      marginTop: 'auto',
+                      position: 'sticky',
+                      bottom: 0,
+                      backgroundColor: 'white',
+                      paddingTop: '10px',
+                      paddingBottom: '10px',
+                      zIndex: 1,
+                    }}
+                  >
+                    <button
+                      onClick={cerrarPanel}
+                      style={{
+                        width: '100%',
+                        marginTop: '16px',
+                        padding: '12px',
+                        backgroundColor: '#009ee3',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '15px',
+                      }}
+                    >
+                      Finalizar compra
+                    </button>
+                  </Link>
+                </>
+              )}
+            </div>
+          </>,
+          document.body
+        )}
+    </>
+  )
+}
+
+===== src\app\checkout\page.js =====
+// DESTINO: src/app/checkout/page.js  (reemplaza el archivo actual)
+'use client'
+
+import Script from 'next/script'
+import './checkout.css'
+
+import { useState, useEffect, useRef } from 'react'
+import { useCarrito } from '@/lib/carrito'
+import { useRouter } from 'next/navigation'
+import SelectorEnvio from './SelectorEnvio'
+import BrandBrickMP from './BrandBrickMP'
+import BotonGoogle from '../BotonGoogle'
+import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
+import { textoConfeccion } from '@/lib/configConfeccion'
+import { ID_ENVIO_GRATIS_AUTO, UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import { etiquetaDescuento } from '@/lib/configCupones'
+import { track } from '@/lib/fbq'
+
+// BotonGoogle ahora está dentro del <form>: si su botón no tiene type="button", enviaría el checkout.
+// Esto cancela solo ese envío y deja que el login con Google funcione igual.
+function SinEnvioDeFormulario({ children }) {
+  return (
+    <div
+      onClickCapture={(e) => {
+        const boton = e.target.closest?.('button')
+        if (boton && boton.type === 'submit') e.preventDefault()
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+export default function Checkout() {
+  const {
+    items,
+    totalProductos,
+    envioGratis,
+    zonaEnvio,
+    cupon,
+    cuponAplica,
+    descuentoCupon,
+    aplicarCupon,
+    quitarCupon,
+    pagar,
+    vaciarCarrito,
+    usuario,
+    cerrarSesion,
+    cabecerasConSesion,
+  } = useCarrito()
+  const router = useRouter()
+
+  const [datos, setDatos] = useState({
+    nombre: '',
+    email: '',
+    dni: '',
+    telefono: '',
+    calle: '',
+    numero: '',
+    pisoDepto: '',
+    ciudad: '',
+    codigoPostal: '',
+    notas: '',
+  })
+
+  const [enviando, setEnviando] = useState(false)
+  const [metodoPago, setMetodoPago] = useState('mercadopago')
+
+  // Campo de cupón
+  const [codigoCupon, setCodigoCupon] = useState('')
+  const [mensajeCupon, setMensajeCupon] = useState('')
+  const [aplicandoCupon, setAplicandoCupon] = useState(false)
+  const [cuponPideLogin, setCuponPideLogin] = useState(false)
+
+  // META PIXEL: InitiateCheckout (una sola vez). Los hooks van siempre antes de cualquier return.
+  const checkoutIniciado = useRef(false)
+
+  useEffect(() => {
+    if (checkoutIniciado.current || items.length === 0) return
+    checkoutIniciado.current = true
+    track('InitiateCheckout', {
+      value: totalProductos,
+      currency: 'ARS',
+      content_type: 'product',
+      num_items: items.reduce((a, i) => a + i.cantidad, 0),
+      contents: items.map((i) => ({
+        id: String(i.id),
+        quantity: i.cantidad,
+        item_price: i.precio,
+      })),
+    })
+  }, [items, totalProductos])
+
+  const esRetiro = zonaEnvio?.nombre === 'Retiro en persona'
+  const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
+  const conTransferencia = metodoPago === 'transferencia'
+
+  // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
+  // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
+  const hayCupon = cuponAplica && descuentoCupon > 0
+  const cuponEnUso = hayCupon
+  const descuentoCuponEfectivo = cuponEnUso ? descuentoCupon : 0
+  const subtotalEfectivo = totalProductos - descuentoCuponEfectivo
+
+  const montoTransferencia = Math.round(subtotalEfectivo * DESCUENTO_TRANSFERENCIA)
+  const transferenciaGana = conTransferencia
+  const descuentoTransferenciaEfectivo = conTransferencia ? montoTransferencia : 0
+  const envioGratisEfectivo = subtotalEfectivo >= UMBRAL_ENVIO_GRATIS
+  const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - subtotalEfectivo)
+  const costoEnvioEfectivo = calcularCostoEnvio(subtotalEfectivo, zonaEnvio)
+  const totalAPagar = subtotalEfectivo - descuentoTransferenciaEfectivo + costoEnvioEfectivo
+
+  function handleChange(e) {
+    setDatos({ ...datos, [e.target.name]: e.target.value })
+  }
+
+  async function handleAplicarCupon() {
+    setMensajeCupon('')
+    setCuponPideLogin(false)
+    setAplicandoCupon(true)
+    const resultado = await aplicarCupon(codigoCupon)
+    setAplicandoCupon(false)
+
+    if (!resultado.ok) {
+      setMensajeCupon(resultado.error)
+      if (resultado.loginRequerido) setCuponPideLogin(true)
+      return
+    }
+    setCodigoCupon('')
+  }
+
+  function validar() {
+    if (cupon && !usuario) {
+      return 'Para usar el cupón ingresá con Google (o quitá el cupón para seguir sin cuenta).'
+    }
+    if (!datos.nombre.trim()) return 'Ingresá tu nombre completo'
+    if (!datos.email.trim()) return 'Ingresá tu email'
+    if (!datos.dni.trim()) return 'Ingresá tu DNI'
+    if (!datos.telefono.trim()) return 'Ingresá tu teléfono'
+    if (envioGratis && !esRetiro) {
+      // Con envío gratis la empresa se elige sola al cargar el código postal
+      if (zonaEnvio?.id !== ID_ENVIO_GRATIS_AUTO) {
+        return 'Todavía no pudimos confirmar tu envío gratis. Revisá tu código postal.'
+      }
+    } else if (!zonaEnvio) {
+      return 'Elegí una zona de envío'
+    }
+    if (!esRetiro) {
+      if (!datos.calle.trim() || !datos.numero.trim() || !datos.ciudad.trim() || !datos.codigoPostal.trim()) {
+        return 'Completá la dirección de envío completa'
+      }
+    }
+    return null
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+
+    if (items.length === 0) {
+      alert('Tu carrito está vacío')
+      return
+    }
+
+    const error = validar()
+    if (error) {
+      alert(error)
+      return
+    }
+
+    setEnviando(true)
+    try {
+      const token = await new Promise((resolve, reject) => {
+        window.grecaptcha.ready(() => {
+          window.grecaptcha
+            .execute(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY, { action: 'checkout' })
+            .then(resolve)
+            .catch(reject)
+        })
+      })
+
+      if (conTransferencia) {
+        const res = await fetch('/api/crear-pedido-transferencia', {
+          method: 'POST',
+          headers: await cabecerasConSesion(),
+          body: JSON.stringify({
+            items,
+            zonaEnvio,
+            datosCliente: datos,
+            recaptchaToken: token,
+            cuponCodigo: cupon?.codigo || null,
+          }),
+        })
+        const data = await res.json()
+
+        if (!res.ok) {
+          // Si el cupón ya no sirve (venció, se agotó o ya lo usaste), se saca para que el cliente vea el precio real
+          if (data.cupon_invalido) quitarCupon()
+          alert(data.error || 'Hubo un error al procesar tu pedido. Probá de nuevo.')
+          setEnviando(false)
+          return
+        }
+
+        // La pantalla siguiente lee estos datos para mostrar el monto y el número de pedido
+        sessionStorage.setItem(
+          'pedido_transferencia',
+          JSON.stringify({
+            id: data.pedido_id,
+            total: data.total,
+            descuento: data.descuento,
+            descuento_cupon: data.descuento_cupon || 0,
+          })
+        )
+
+        // META PIXEL: Purchase por transferencia
+        track(
+          'Purchase',
+          {
+            value: Number(data.total),
+            currency: 'ARS',
+            content_type: 'product',
+            num_items: items.reduce((a, i) => a + i.cantidad, 0),
+            contents: items.map((i) => ({
+              id: String(i.id),
+              quantity: i.cantidad,
+              item_price: i.precio,
+            })),
+          },
+          `purchase_${data.pedido_id}`
+        )
+
+        vaciarCarrito()
+        router.push('/pago-transferencia')
+        return
+      }
+
+      await pagar(datos, token)
+    } catch (err) {
+      if (err?.cuponInvalido) {
+        quitarCupon()
+        alert(err.message)
+      } else {
+        alert('Hubo un error al procesar tu pedido. Probá de nuevo.')
+      }
+      setEnviando(false)
+    }
+  }
+
+  const formatoPrecio = (valor) => Number(valor || 0).toLocaleString('es-AR')
+
+  if (items.length === 0) {
+    return (
+      <main className="checkout-empty">
+        <div className="checkout-empty-card">
+          <span className="checkout-kicker">DIMEDETI AMBOS</span>
+          <h1>Tu carrito está vacío</h1>
+          <p>Elegí tus prendas favoritas y volvé para finalizar tu compra.</p>
+          <button type="button" className="checkout-primary-button" onClick={() => router.push('/')}>
+            Volver a la tienda
+          </button>
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="checkout-page">
+      <Script src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`} />
+
+      <header className="checkout-heading">
+        <span className="checkout-kicker">DIMEDETI AMBOS · TIENDA ONLINE</span>
+        <h1>Finalizá tu compra</h1>
+        <p>Ya falta poco. Completá tus datos y elegí cómo querés recibir tu pedido.</p>
+        <div className="checkout-steps" aria-label="Pasos de compra">
+          <span className="checkout-step checkout-step-active"><b>1</b> Tus datos</span>
+          <i />
+          <span className="checkout-step"><b>2</b> Entrega y pago</span>
+          <i />
+          <span className="checkout-step"><b>3</b> Confirmación</span>
+        </div>
+      </header>
+
+      <form id="checkout-form" onSubmit={handleSubmit} className="checkout-layout">
+        <div className="checkout-main-column">
+          <section className="checkout-card">
+            <div className="checkout-section-heading">
+              <span className="checkout-section-number">01</span>
+              <div>
+                <h2>Datos de contacto</h2>
+                <p>¿A quién le preparamos el pedido?</p>
+              </div>
+            </div>
+
+            {!usuario ? (
+              <div className="checkout-google-box">
+                <div>
+                  <strong>🎁 Tenés un beneficio de bienvenida</strong>
+                  <p>Ingresá con Google para acceder al cupón BIENVENIDA del 5% en tu primera compra. También podés comprar sin registrarte.</p>
+                </div>
+                <SinEnvioDeFormulario><BotonGoogle /></SinEnvioDeFormulario>
+              </div>
+            ) : (
+              <div className="checkout-session">
+                <span>Sesión iniciada como <strong>{usuario.email}</strong></span>
+                <button type="button" onClick={cerrarSesion}>Cerrar sesión</button>
+              </div>
+            )}
+
+            <div className="checkout-fields-grid">
+              <label className="checkout-field checkout-field-full">
+                Nombre y apellido *
+                <input name="nombre" autoComplete="name" value={datos.nombre} onChange={handleChange} style={inputStyle} />
+              </label>
+              <label className="checkout-field">
+                Correo electrónico *
+                <input name="email" type="email" autoComplete="email" value={datos.email} onChange={handleChange} style={inputStyle} />
+              </label>
+              <label className="checkout-field">
+                Teléfono *
+                <input name="telefono" type="tel" autoComplete="tel" value={datos.telefono} onChange={handleChange} style={inputStyle} />
+              </label>
+              <label className="checkout-field checkout-field-full">
+                DNI *
+                <input name="dni" inputMode="numeric" value={datos.dni} onChange={handleChange} style={inputStyle} />
+              </label>
+            </div>
+          </section>
+
+          <section className="checkout-card">
+            <div className="checkout-section-heading">
+              <span className="checkout-section-number">02</span>
+              <div>
+                <h2>Entrega de tu pedido</h2>
+                <p>Completá la dirección para consultar las opciones disponibles.</p>
+              </div>
+            </div>
+
+            {!esRetiro && (
+              <div className="checkout-fields-grid">
+                <label className="checkout-field checkout-field-wide">
+                  Calle *
+                  <input name="calle" autoComplete="address-line1" value={datos.calle} onChange={handleChange} style={inputStyle} />
+                </label>
+                <label className="checkout-field">
+                  Número *
+                  <input name="numero" autoComplete="address-line2" value={datos.numero} onChange={handleChange} style={inputStyle} />
+                </label>
+                <label className="checkout-field">
+                  Piso / Depto
+                  <input name="pisoDepto" value={datos.pisoDepto} onChange={handleChange} style={inputStyle} placeholder="Opcional" />
+                </label>
+                <label className="checkout-field">
+                  Ciudad *
+                  <input name="ciudad" autoComplete="address-level2" value={datos.ciudad} onChange={handleChange} style={inputStyle} />
+                </label>
+                <label className="checkout-field">
+                  Código postal *
+                  <input name="codigoPostal" autoComplete="postal-code" value={datos.codigoPostal} onChange={handleChange} style={inputStyle} />
+                </label>
+              </div>
+            )}
+
+            <div className="checkout-delivery-selector">
+              <SelectorEnvio codigoPostal={datos.codigoPostal} />
+            </div>
+
+            <label className="checkout-field checkout-notes-field">
+              Indicaciones adicionales <span>(opcional)</span>
+              <textarea name="notas" value={datos.notas} onChange={handleChange} style={{ ...inputStyle, minHeight: '88px', resize: 'vertical' }} placeholder="Aclaraciones para preparar o entregar tu pedido..." />
+            </label>
+          </section>
+
+          <section className="checkout-card">
+            <div className="checkout-section-heading">
+              <span className="checkout-section-number">03</span>
+              <div>
+                <h2>Forma de pago</h2>
+                <p>Elegí cómo querés abonar tu compra.</p>
+              </div>
+            </div>
+
+            <div className="checkout-payment-options">
+              <label style={opcionPagoStyle(metodoPago === 'mercadopago')} className="checkout-payment-option">
+                <input
+                  type="radio"
+                  name="metodoPago"
+                  checked={metodoPago === 'mercadopago'}
+                  onChange={() => setMetodoPago('mercadopago')}
+                />
+                <span className="checkout-payment-icon">💳</span>
+                <span className="checkout-payment-copy">
+                  <strong>Mercado Pago</strong>
+                  <small>Tarjetas, dinero en cuenta, cuotas y más.</small>
+                </span>
+              </label>
+
+              <label style={{ ...opcionPagoStyle(conTransferencia), marginTop: 0 }} className="checkout-payment-option">
+                <input
+                  type="radio"
+                  name="metodoPago"
+                  checked={conTransferencia}
+                  onChange={() => setMetodoPago('transferencia')}
+                />
+                <span className="checkout-payment-icon">🏦</span>
+                <span className="checkout-payment-copy">
+                  <strong>Transferencia bancaria <em>{porcentajeDescuento}% OFF</em></strong>
+                  <small>Ahorrás ${formatoPrecio(montoTransferencia)}. {hayCupon ? `Se suma a tu cupón ${cupon.codigo}.` : 'El descuento se aplica automáticamente.'}</small>
+                </span>
+              </label>
+            </div>
+
+            {!conTransferencia && <div className="checkout-brick"><BrandBrickMP /></div>}
+          </section>
+
+          <div className="checkout-security-note">
+            <span>🔒</span>
+            <p>Tu información se utiliza únicamente para procesar y entregar tu pedido.</p>
+          </div>
+        </div>
+
+        <aside className="checkout-side-column">
+          <section className="checkout-card checkout-summary-card">
+            <div className="checkout-section-heading checkout-summary-heading">
+              <div>
+                <span className="checkout-kicker">UN ÚLTIMO REPASO</span>
+                <h2>Resumen de tu pedido</h2>
+              </div>
+              <span className="checkout-item-count">{items.reduce((total, item) => total + item.cantidad, 0)} prendas</span>
+            </div>
+
+            <div className="checkout-items-list">
+              {items.map((item) => (
+                <article className="checkout-product" key={`${item.id}-${item.variante_id || ''}`}>
+                  <div className="checkout-product-image">
+                    {item.imagen_url ? <img src={item.imagen_url} alt={item.nombre} /> : <span>Prenda</span>}
+                  </div>
+                  <div className="checkout-product-info">
+                    <strong>{item.nombre}</strong>
+                    {item.color && <span className="checkout-product-detail">Color: {item.color}</span>}
+                    {item.talle && <span className="checkout-product-detail">Talle: {item.talle}</span>}
+                    <span className="checkout-quantity">Cantidad: <b>{item.cantidad}</b></span>
+                  </div>
+                  <strong className="checkout-product-price">${formatoPrecio(item.precio * item.cantidad)}</strong>
+                </article>
+              ))}
+            </div>
+
+            <div className="checkout-coupon-area">
+              {cupon ? (
+                <div className="checkout-coupon-applied">
+                  <div>
+                    <span>🎟️ Cupón aplicado</span>
+                    <strong>{cupon.codigo} · {etiquetaDescuento(cupon)}</strong>
+                    {!cuponAplica && <small>Válido desde una compra mínima de ${formatoPrecio(cupon.compra_minima)} en productos.</small>}
+                  </div>
+                  <button type="button" onClick={quitarCupon}>Quitar</button>
+                </div>
+              ) : (
+                <>
+                  <label htmlFor="checkout-coupon">¿Tenés un código de descuento?</label>
+                  <div className="checkout-coupon-form">
+                    <input
+                      id="checkout-coupon"
+                      value={codigoCupon}
+                      onChange={(e) => setCodigoCupon(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          if (codigoCupon.trim() && !aplicandoCupon) handleAplicarCupon()
+                        }
+                      }}
+                      placeholder="Ingresá tu cupón"
+                      autoCapitalize="characters"
+                    />
+                    <button type="button" onClick={handleAplicarCupon} disabled={aplicandoCupon || !codigoCupon.trim()}>
+                      {aplicandoCupon ? '...' : 'Aplicar'}
+                    </button>
+                  </div>
+                </>
+              )}
+              {mensajeCupon && <p className="checkout-coupon-error">{mensajeCupon}</p>}
+              {cuponPideLogin && !usuario && (
+                <div className="checkout-coupon-login">
+                  <SinEnvioDeFormulario><BotonGoogle texto="Ingresar con Google para usar el cupón" /></SinEnvioDeFormulario>
+                </div>
+              )}
+              {!usuario && !cupon && <small className="checkout-coupon-hint">El cupón BIENVENIDA es del 5% y se puede usar una sola vez por cuenta.</small>}
+            </div>
+
+            <div className="checkout-totals">
+              <div><span>Subtotal de productos</span><strong>${formatoPrecio(totalProductos)}</strong></div>
+              {cuponEnUso && <div className="checkout-discount-row"><span>{cupon.codigo} ({etiquetaDescuento(cupon)})</span><strong>−${formatoPrecio(descuentoCuponEfectivo)}</strong></div>}
+              {transferenciaGana && <div className="checkout-discount-row"><span>Descuento por transferencia ({porcentajeDescuento}%)</span><strong>−${formatoPrecio(descuentoTransferenciaEfectivo)}</strong></div>}
+              <div>
+                <span>{esRetiro ? 'Retiro en persona' : 'Envío'}</span>
+                <strong>{esRetiro ? 'Gratis' : envioGratisEfectivo ? '¡Gratis!' : zonaEnvio ? `$${formatoPrecio(costoEnvioEfectivo)}` : 'A calcular'}</strong>
+              </div>
+              {!esRetiro && !envioGratisEfectivo && (
+                <p className="checkout-free-shipping-hint">Te faltan ${formatoPrecio(faltaParaEnvioGratis)} en productos para obtener envío gratis desde ${formatoPrecio(UMBRAL_ENVIO_GRATIS)}.</p>
+              )}
+              <div className="checkout-total-line"><span>Total a pagar</span><strong>${formatoPrecio(totalAPagar)}</strong></div>
+              <p className="checkout-making-time">🧵 Confección a pedido: {textoConfeccion()}.</p>
+            </div>
+
+            {hayCupon && conTransferencia && (
+              <p className="checkout-stacking-note">¡Tu cupón se combina con el descuento por transferencia! No se acumula con otros cupones.</p>
+            )}
+
+            <button
+              type="submit"
+              form="checkout-form"
+              disabled={enviando}
+              className="checkout-primary-button checkout-submit-button"
+            >
+              {enviando ? 'Procesando tu pedido...' : conTransferencia ? 'Confirmar pedido' : 'Continuar con Mercado Pago'}
+            </button>
+            <p className="checkout-submit-caption">Al confirmar, aceptás nuestros términos y condiciones de compra.</p>
+          </section>
+        </aside>
+      </form>
+    </main>
+  )
+
+}
+
+const inputStyle = {
+  display: 'block',
+  width: '100%',
+  padding: '12px 14px',
+  marginTop: '7px',
+  border: '1px solid #DCD4C9',
+  borderRadius: '9px',
+  backgroundColor: '#FFFEFC',
+  color: '#2E2A26',
+  fontSize: '15px',
+  boxSizing: 'border-box',
+}
+
+function opcionPagoStyle(seleccionada) {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '12px',
+    border: seleccionada ? '2px solid #2F6B63' : '1px solid #E4DCCF',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    backgroundColor: seleccionada ? '#F0F7F5' : '#FFFEFC',
+  }
+}
+
+===== src\app\globals.css =====
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Figtree:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #FAF6F0;
+  --foreground: #2E2A26;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Figtree', sans-serif;
+  --font-serif: 'Fraunces', serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+/* Pegar al final de src/app/globals.css */
+/* (borrá antes el bloque viejo del logo flotante: .dmt-logo-flotante) */
+
+/* Achicar / agrandar suave */
+.dmt-logo-img{ display:block; transition:height .3s ease; }
+
+/* 1) Entrada: desliza desde la izquierda, se revela con borde redondeado
+      (como la trompa de un auto), frena y rebota un poco. Una sola vez. */
+.dmt-entrada{
+  display:inline-flex;
+  animation:dmt-llegada 1.1s cubic-bezier(.22,.8,.3,1) both;
+}
+@keyframes dmt-llegada{
+  0%   { transform:translateX(-160px); clip-path:inset(0 100% 0 0 round 22px); opacity:0; }
+  15%  { opacity:1; }
+  60%  { transform:translateX(10px);   clip-path:inset(0 0 0 0 round 22px); opacity:1; }
+  80%  { transform:translateX(-4px);   clip-path:inset(0 0 0 0 round 22px); }
+  100% { transform:translateX(0);      clip-path:inset(0 0 0 0 round 22px); opacity:1; }
+}
+
+/* 2) Aureola: dos aros redondeados que se expanden y se desvanecen,
+      empiezan cuando el logo ya llegó. */
+.dmt-aureola{ position:relative; display:inline-flex; border-radius:22px; }
+.dmt-aureola::before,
+.dmt-aureola::after{
+  content:""; position:absolute; inset:-3px; border-radius:25px;
+  border:2px solid rgba(71,73,78,.55);
+  opacity:0; pointer-events:none;
+  animation:dmt-aureola 2.6s ease-out infinite;
+  animation-delay:1.3s;
+}
+.dmt-aureola::after{ animation-delay:2.6s; }
+@keyframes dmt-aureola{
+  0%   { transform:scale(1);    opacity:.7; }
+  100% { transform:scale(1.22); opacity:0;  }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .dmt-entrada{ animation:none; }
+  .dmt-aureola::before,.dmt-aureola::after{ animation:none; }
+}
+
+===== src\app\layout.js =====
+// DESTINO: src/app/layout.js  (reemplaza el archivo actual)
+import { CarritoProvider } from '@/lib/carrito'
+import Header from './Header'
+import './globals.css'
+import FloatingWhatsApp from './FloatingWhatsApp'
+import Footer from './Footer'
+import MetaPixel from '../components/MetaPixel'
+import CuponDesdeQR from './CuponDesdeQR'
+import CartelSuscripcion from './CartelSuscripcion'
+
+export const metadata = {
+  // Dirección oficial: Google la usa como base para todas las direcciones del sitio
+  metadataBase: new URL('https://www.dimedetiambos.com.ar'),
+  title: {
+    default: 'Dimedeti Ambos | Ambos médicos y sanitarios',
+    template: '%s | Dimedeti Ambos',
+  },
+  description:
+    'Ambos médicos y sanitarios confeccionados a pedido. Elegí tu talle y color y recibilo en todo el país.',
+  icons: {
+    icon: '/icon-192.png',
+    apple: '/apple-touch-icon.png',
+  },
+}
+
+export const viewport = {
+  themeColor: '#47494e',
+}
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="es">
+      <body>
+        <CarritoProvider>
+          <Header />
+          <MetaPixel />
+          <CuponDesdeQR />
+          {children}
+          <FloatingWhatsApp />
+          <CartelSuscripcion />
+          <Footer />
+        </CarritoProvider>
+      </body>
+    </html>
+  )
+}
+
+===== src\app\page.js =====
+import Image from 'next/image'
+import { supabase } from '@/lib/supabase'
+import { textoConfeccion } from '@/lib/configConfeccion'
+import ProductoCard from './ProductoCard'
+import CarritoIcono from './CarritoIcono'
+import TestimoniosCarousel from './TestimoniosCarousel'
+import BannerCarrusel from './BannerCarrusel'
+
+export const dynamic = 'force-dynamic'
+
+// Animación del cartel verde: el texto se desplaza hacia la izquierda sin cortes
+const CSS_CARTEL =
+  '.cartel-track{display:flex;width:max-content;animation:cartel-scroll 30s linear infinite}' +
+  '.cartel-track:hover{animation-play-state:paused}' +
+  '.cartel-grupo{display:flex;flex-shrink:0}' +
+  '@keyframes cartel-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}' +
+  '@media (prefers-reduced-motion: reduce){.cartel-track{animation:none}}'
+
+// Banner de cada categoría. Los archivos van en public/banners/
+// Si guardaste las imágenes con otra extensión (por ejemplo .webp o .png), cambiala acá.
+const CATEGORIAS = [
+  { id: 0, banner: '/banners/ambos.jpg', alt: 'Ambos' },
+  { id: 1, banner: '/banners/chaquetas.jpg', alt: 'Chaquetas' },
+  { id: 2, banner: '/banners/pantalones.jpg', alt: 'Pantalones' },
+]
+
+// Orden del catálogo: primero ambos, luego chaquetas y al final pantalones.
+// Se mira cómo EMPIEZA el nombre, para que "Ambo ... Pantalon con Puños" no caiga en pantalones.
+function grupo(nombre = '') {
+  const n = nombre
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+  if (n.startsWith('ambo')) return 0
+  if (n.startsWith('chaqueta')) return 1
+  if (n.startsWith('pantalon')) return 2
+  return 3
+}
+
+export default async function Home() {
+  const { data } = await supabase
+    .from('productos')
+    .select('*')
+    .eq('visible', true)
+    .order('id', { ascending: true })
+
+  const productos = [...(data || [])].sort(
+    (a, b) => grupo(a.nombre) - grupo(b.nombre)
+  )
+
+  // Productos cuyo nombre no empieza con ambo, chaqueta ni pantalon: van al final, sin banner
+  const otros = productos.filter((p) => grupo(p.nombre) === 3)
+
+  return (
+    <main className="min-h-screen bg-[#FAF6F0]">
+      <style>{CSS_CARTEL}</style>
+      <div className="overflow-hidden bg-[#2F6B63] py-2.5 text-sm text-white">
+        <div className="cartel-track">
+          {[0, 1].map((copia) => (
+            <div key={copia} className="cartel-grupo" aria-hidden={copia === 1}>
+              {[0, 1, 2, 3].map((n) => (
+                <span key={n} className="whitespace-nowrap px-8">
+                  🧵 Todas las prendas se confeccionan a pedido · Tiempo de confección: <strong>{textoConfeccion()}</strong>
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <header
+        className="flex items-center justify-between border-b border-[#E4DCCF] px-6 py-10 md:px-10 md:py-14"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, rgba(250,246,240,0.95) 0%, rgba(250,246,240,0.75) 50%, rgba(250,246,240,0.35) 100%), url(/img/fondo-tela.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'right center',
+        }}
+      >
+        <span className="font-serif text-3xl tracking-tight text-[#2E2A26] md:text-4xl">
+          Dimedeti Ambos
+        </span>
+        <CarritoIcono />
+      </header>
+
+      <BannerCarrusel confeccion={textoConfeccion()} />
+      <TestimoniosCarousel />
+
+      <div
+        className="relative px-6 md:px-10 py-10"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(250,246,240,0.75), rgba(250,246,240,0.85)), url(/img/fondo-tela.jpg)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
+          backgroundAttachment: 'fixed',
+        }}
+      >
+        {CATEGORIAS.map((cat) => {
+          const lista = productos.filter((p) => grupo(p.nombre) === cat.id)
+          if (lista.length === 0) return null
+
+          return (
+            <section key={cat.id} className="mb-10">
+              <Image
+                src={cat.banner}
+                alt={cat.alt}
+                width={1672}
+                height={941}
+                sizes="(min-width: 768px) 90vw, 100vw"
+                className="mb-6 block h-auto w-full rounded-xl"
+              />
+              <div className="flex flex-wrap gap-6">
+                {lista.map((producto) => (
+                  <ProductoCard key={producto.id} producto={producto} />
+                ))}
+              </div>
+            </section>
+          )
+        })}
+
+        {otros.length > 0 && (
+          <section className="mb-10">
+            <div className="flex flex-wrap gap-6">
+              {otros.map((producto) => (
+                <ProductoCard key={producto.id} producto={producto} />
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </main>
+  )
+}
+
+===== src\app\ProductoCardCliente.js =====
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { createPortal } from 'react-dom'
+import { useCarrito } from '@/lib/carrito'
+import { textoConfeccion } from '@/lib/configConfeccion'
+import { track } from '@/lib/fbq'
+
+// Fotos de TABLA DE TALLES que no deben aparecer nunca en la tarjeta del home.
+// Pegá acá el link de cada foto de tabla, entre comillas y separados por coma. Ejemplo:
+//   'https://http2.mlstatic.com/D_Q_NP_000000-MLA000000000_000000-F.webp',
+const FOTOS_TABLA_TALLES = [
+]
+
+const CAMPOS_FOTO = [
+  'imagen_url', 'imagen_2', 'imagen_3', 'imagen_4', 'imagen_5', 'imagen_6',
+  'imagen_7', 'imagen_8', 'imagen_9', 'imagen_10', 'imagen_11', 'imagen_12',
+]
+
+// Fotos de una variante, sin las de tabla de talles
+function fotosValidas(variante) {
+  return CAMPOS_FOTO.map((campo) => variante[campo]).filter(
+    (url) => url && !FOTOS_TABLA_TALLES.includes(url)
+  )
+}
+
+export default function ProductoCardCliente({ producto, variantes }) {
+  const coloresUnicos = Array.from(new Set(variantes.map((v) => v.color).filter(Boolean)))
+
+  // Una foto por color: la primera que no sea tabla de talles
+  const primeraFotoPorColor = coloresUnicos
+    .map((color) => {
+      for (const v of variantes.filter((x) => x.color === color)) {
+        const url = fotosValidas(v)[0]
+        if (url) return { ...v, imagen_url: url }
+      }
+      return null
+    })
+    .filter(Boolean)
+
+  const fotoNegro = primeraFotoPorColor.find((f) => f.color?.toLowerCase() === 'negro')
+  const fotoBlanco = primeraFotoPorColor.find((f) => f.color?.toLowerCase() === 'blanco')
+  const fotoPorDefecto = fotoNegro || fotoBlanco || primeraFotoPorColor[0]
+
+  // Miniaturas: Negro siempre primero (si el producto lo tiene); el resto mantiene su orden
+  const esNegro = (f) => (f.color?.toLowerCase() === 'negro' ? 1 : 0)
+  const fotosOrdenadas = [...primeraFotoPorColor].sort((a, b) => esNegro(b) - esNegro(a))
+
+  const [fotoActiva, setFotoActiva] = useState(fotoPorDefecto)
+  const [modalAbierto, setModalAbierto] = useState(false)
+  const [colorSeleccionado, setColorSeleccionado] = useState(fotoActiva?.color || '')
+  const [varianteElegida, setVarianteElegida] = useState(fotoPorDefecto || variantes[0] || null)
+  const [cantidad, setCantidad] = useState(1)
+
+  const { agregarAlCarrito, abrirPanel, cerrarPanel } = useCarrito()
+
+  const variantesDelColor = variantes.filter((v) => v.color === colorSeleccionado)
+
+  function abrirModal(e) {
+    e.preventDefault()
+    cerrarPanel()
+    setColorSeleccionado(fotoActiva?.color || variantes[0]?.color || '')
+    setVarianteElegida(fotoActiva || variantes[0] || null)
+    setCantidad(1)
+    setModalAbierto(true)
+  }
+
+  function handleSeleccionarColor(nuevoColor) {
+    setColorSeleccionado(nuevoColor)
+    const opcionesDelColor = variantes.filter((v) => v.color === nuevoColor)
+    if (opcionesDelColor.length > 0) setVarianteElegida(opcionesDelColor[0])
+  }
+
+  function handleSeleccionarTalle(varianteId) {
+    const encontrada = variantesDelColor.find((v) => String(v.id) === String(varianteId))
+    if (encontrada) setVarianteElegida(encontrada)
+  }
+
+function handleAgregar() {
+  agregarAlCarrito(
+    {
+      ...producto,
+      variante_id: varianteElegida?.id,
+      color: varianteElegida?.color,
+      talle: varianteElegida?.talle,
+      imagen_url: varianteElegida?.imagen_url,
+    },
+    cantidad
+  )
+
+  track('AddToCart', {
+    value: producto.precio * cantidad,
+    currency: 'ARS',
+    content_type: 'product',
+    content_ids: [String(producto.id)],
+    content_name: producto.nombre,
+    contents: [{ id: String(producto.id), quantity: cantidad, item_price: producto.precio }],
+  })
+
+  setModalAbierto(false)
+  abrirPanel()
+}
+
+  return (
+    // flex-col: la tarjeta se estira al alto de su fila y el botón queda siempre abajo (mt-auto)
+    <div className="flex w-[250px] flex-col rounded-2xl border border-[#E4DCCF] bg-white overflow-hidden transition-shadow hover:shadow-[0_8px_24px_-8px_rgba(46,42,38,0.18)]">
+      <Link href={`/producto/${producto.id}`} prefetch={false} className="block shrink-0">
+        {/* Mismo recuadro para todas las fotos. Fondo blanco: los márgenes de la foto no se notan */}
+        <div className="aspect-[4/5] w-full overflow-hidden bg-white">
+          {fotoActiva?.imagen_url && (
+            <img
+              src={fotoActiva.imagen_url}
+              alt={`${producto.nombre} - ${fotoActiva.color}`}
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover object-top"
+            />
+          )}
+        </div>
+      </Link>
+
+      {/* Espacio de miniaturas SIEMPRE reservado (12px de padding + 36px de miniatura = 48px),
+          así un producto de un solo color no desalinea el precio de las tarjetas vecinas */}
+      <div className="flex min-h-[48px] gap-1.5 px-3 pt-3 flex-wrap">
+        {primeraFotoPorColor.length > 1 &&
+          fotosOrdenadas.slice(0, 5).map((f) => (
+            <button
+              key={f.color}
+              onClick={(e) => {
+                e.preventDefault()
+                setFotoActiva(f)
+              }}
+              className={`h-9 w-9 overflow-hidden rounded-md border transition ${
+                fotoActiva?.color === f.color
+                  ? 'border-[#2F6B63] ring-1 ring-[#2F6B63]'
+                  : 'border-[#E4DCCF]'
+              }`}
+              title={f.color}
+            >
+              <img src={f.imagen_url} alt={f.color} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+            </button>
+          ))}
+      </div>
+
+      <Link href={`/producto/${producto.id}`} prefetch={false} className="block px-4 pt-3">
+        {/* Reserva siempre 3 líneas: 3 x 1.3 = 3.9em. Así el precio queda a la misma altura */}
+        <h2 className="font-serif text-[17px] leading-[1.3] min-h-[3.9em] text-[#2E2A26]">
+          {producto.nombre}
+        </h2>
+        <span className="mt-2 inline-block rounded-full bg-[#EFE6D8] px-3 py-1 text-sm font-medium text-[#2F6B63]">
+          ${producto.precio?.toLocaleString('es-AR')}
+        </span>
+      </Link>
+
+      <div className="mt-auto px-4 pb-4 pt-3">
+        <button
+          onClick={abrirModal}
+          className="w-full rounded-full bg-[#2F6B63] py-2.5 text-sm font-semibold text-white transition hover:bg-[#28584F]"
+        >
+          Agregar al carrito
+        </button>
+      </div>
+
+      {modalAbierto && createPortal(
+        <div
+          onClick={() => setModalAbierto(false)}
+          style={{ zIndex: 2000 }}
+          className="fixed inset-0 flex items-center justify-center bg-[#2E2A26]/50 p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl bg-[#FAF6F0] p-6"
+          >
+            <div className="flex items-start justify-between">
+              <h3 className="font-serif text-lg text-[#2E2A26] pr-4">{producto.nombre}</h3>
+              <button
+                onClick={() => setModalAbierto(false)}
+                className="text-[#8A8378] hover:text-[#2E2A26]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <span className="mt-2 inline-block rounded-full bg-[#EFE6D8] px-3 py-1 text-sm font-medium text-[#2F6B63]">
+              ${producto.precio?.toLocaleString('es-AR')}
+            </span>
+
+            {coloresUnicos.length > 0 && (
+              <div className="mt-5">
+                <label className="mb-1.5 block text-sm font-medium text-[#2E2A26]">
+                  Color: <span className="font-normal text-[#8A8378]">{colorSeleccionado}</span>
+                </label>
+                <select
+                  value={colorSeleccionado}
+                  onChange={(e) => handleSeleccionarColor(e.target.value)}
+                  className="w-full rounded-lg border border-[#E4DCCF] bg-white px-3 py-2.5 text-sm text-[#2E2A26] outline-none focus:border-[#2F6B63]"
+                >
+                  {coloresUnicos.map((color) => (
+                    <option key={color} value={color}>{color}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {variantesDelColor.length > 0 && (
+              <div className="mt-4">
+                <label className="mb-1.5 block text-sm font-medium text-[#2E2A26]">
+                  Talle: <span className="font-normal text-[#8A8378]">{varianteElegida?.talle}</span>
+                </label>
+                <select
+                  value={varianteElegida?.id || ''}
+                  onChange={(e) => handleSeleccionarTalle(e.target.value)}
+                  className="w-full rounded-lg border border-[#E4DCCF] bg-white px-3 py-2.5 text-sm text-[#2E2A26] outline-none focus:border-[#2F6B63]"
+                >
+                  {variantesDelColor.map((v) => (
+                    <option key={v.id} value={v.id} disabled={v.stock === 0}>
+                      {v.talle} {v.stock === 0 ? '(Sin stock)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {varianteElegida && varianteElegida.stock > 0 && (
+              <div className="mt-4">
+                <label className="mb-1.5 block text-sm font-medium text-[#2E2A26]">
+                  Cantidad: <span className="font-normal text-[#8A8378]">({varianteElegida.stock} disponibles)</span>
+                </label>
+                <div className="flex items-center">
+                  <button
+                    onClick={() => setCantidad((c) => Math.max(1, c - 1))}
+                    disabled={cantidad <= 1}
+                    className="h-9 w-9 rounded-l-lg border border-[#E4DCCF] text-[#2E2A26] disabled:text-[#CFC7B8]"
+                  >
+                    −
+                  </button>
+                  <div className="flex h-9 w-11 items-center justify-center border-y border-[#E4DCCF] text-sm font-medium">
+                    {cantidad}
+                  </div>
+                  <button
+                    onClick={() => setCantidad((c) => Math.min(varianteElegida.stock, c + 1))}
+                    disabled={cantidad >= varianteElegida.stock}
+                    className="h-9 w-9 rounded-r-lg border border-[#E4DCCF] text-[#2E2A26] disabled:text-[#CFC7B8]"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-5 rounded-xl border border-[#E4DCCF] bg-[#F3EEE6] px-3 py-2.5 text-sm text-[#2E2A26]">
+              <p className="font-semibold text-[#2F6B63]">🧵 Confeccionado a pedido</p>
+              <p className="mt-0.5 text-[#5C564C]">
+                Tiempo de confección: <strong>{textoConfeccion()}</strong>
+              </p>
+            </div>
+
+            <button
+              onClick={handleAgregar}
+              disabled={!varianteElegida || varianteElegida?.stock === 0}
+              className="mt-4 w-full rounded-full bg-[#2F6B63] py-3 text-sm font-semibold text-white transition hover:bg-[#28584F] disabled:bg-[#E4DCCF] disabled:text-[#8A8378]"
+            >
+              {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
+===== src\lib\carrito.js =====
+// DESTINO: src/lib/carrito.js  (reemplaza el archivo actual)
+'use client'
+import { createContext, useContext, useState, useEffect } from 'react'
+import { UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
+import { calcularDescuentoCupon, normalizarCodigo } from '@/lib/configCupones'
+import { supabase } from '@/lib/supabase'
+
+const CarritoContext = createContext()
+
+const CLAVE_ITEMS = 'dimedetiambos_carrito_items'
+const CLAVE_ZONA = 'dimedetiambos_zona_envio'
+const CLAVE_CUPON = 'dimedetiambos_cupon'
+const CLAVE_CUPON_PENDIENTE = 'dimedetiambos_cupon_pendiente'
+const CLAVE_BIENVENIDA_PROBADA = 'dimedetiambos_bienvenida_probada'
+
+// Cupón de bienvenida (se crea desde el panel admin con este mismo código)
+const CODIGO_BIENVENIDA = 'BIENVENIDA'
+
+export function CarritoProvider({ children }) {
+  const [items, setItems] = useState([])
+  const [zonaEnvio, setZonaEnvio] = useState(null)
+  const [cupon, setCupon] = useState(null)
+  const [cargado, setCargado] = useState(false)
+
+  // Sesión con Google
+  const [usuario, setUsuario] = useState(null)
+  const [sesionLista, setSesionLista] = useState(false)
+
+  // Estado compartido del panel del carrito (abierto / cerrado)
+  const [panelAbierto, setPanelAbierto] = useState(false)
+
+  function abrirPanel() {
+    setPanelAbierto(true)
+  }
+
+  function cerrarPanel() {
+    setPanelAbierto(false)
+  }
+
+  function alternarPanel() {
+    setPanelAbierto((abierto) => !abierto)
+  }
+
+  // Al montar en el navegador, recuperar lo guardado
+  useEffect(() => {
+    try {
+      const itemsGuardados = localStorage.getItem(CLAVE_ITEMS)
+      const zonaGuardada = localStorage.getItem(CLAVE_ZONA)
+      const cuponGuardado = localStorage.getItem(CLAVE_CUPON)
+
+      if (itemsGuardados) setItems(JSON.parse(itemsGuardados))
+      if (zonaGuardada) setZonaEnvio(JSON.parse(zonaGuardada))
+      if (cuponGuardado) {
+        const cuponParseado = JSON.parse(cuponGuardado)
+        // No restaurar códigos antiguos: BIENVENIDA5 y CUPON10 se reemplazaron.
+        if (!['BIENVENIDA5', 'CUPON10'].includes(String(cuponParseado?.codigo || '').toUpperCase())) {
+          setCupon(cuponParseado)
+        } else {
+          localStorage.removeItem(CLAVE_CUPON)
+        }
+      }
+    } catch (err) {
+      console.error('Error al leer el carrito guardado:', err)
+    } finally {
+      setCargado(true)
+    }
+  }, [])
+
+  // Escuchar la sesión de Google (al entrar, al volver de Google y al salir)
+  useEffect(() => {
+    let activo = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!activo) return
+      setUsuario(data.session?.user ?? null)
+      setSesionLista(true)
+    })
+
+    const { data: suscripcion } = supabase.auth.onAuthStateChange((_evento, sesion) => {
+      setUsuario(sesion?.user ?? null)
+      setSesionLista(true)
+    })
+
+    return () => {
+      activo = false
+      suscripcion.subscription.unsubscribe()
+    }
+  }, [])
+
+  // Guardar items cada vez que cambian (una vez que ya se cargó lo inicial)
+  useEffect(() => {
+    if (!cargado) return
+    try {
+      localStorage.setItem(CLAVE_ITEMS, JSON.stringify(items))
+    } catch (err) {
+      console.error('Error al guardar el carrito:', err)
+    }
+  }, [items, cargado])
+
+  // Guardar zona de envío cada vez que cambia
+  useEffect(() => {
+    if (!cargado) return
+    try {
+      if (zonaEnvio) {
+        localStorage.setItem(CLAVE_ZONA, JSON.stringify(zonaEnvio))
+      } else {
+        localStorage.removeItem(CLAVE_ZONA)
+      }
+    } catch (err) {
+      console.error('Error al guardar la zona de envío:', err)
+    }
+  }, [zonaEnvio, cargado])
+
+  // Guardar el cupón cada vez que cambia
+  useEffect(() => {
+    if (!cargado) return
+    try {
+      if (cupon) {
+        localStorage.setItem(CLAVE_CUPON, JSON.stringify(cupon))
+      } else {
+        localStorage.removeItem(CLAVE_CUPON)
+      }
+    } catch (err) {
+      console.error('Error al guardar el cupón:', err)
+    }
+  }, [cupon, cargado])
+
+  function agregarAlCarrito(producto, cantidad = 1) {
+    setItems((prev) => {
+      const existe = prev.find(
+        (item) => item.id === producto.id && item.variante_id === producto.variante_id
+      )
+      if (existe) {
+        return prev.map((item) =>
+          item.id === producto.id && item.variante_id === producto.variante_id
+            ? { ...item, cantidad: item.cantidad + cantidad }
+            : item
+        )
+      }
+      return [...prev, { ...producto, cantidad }]
+    })
+  }
+
+  function quitarDelCarrito(id, varianteId) {
+    setItems((prev) =>
+      prev.filter((item) => !(item.id === id && item.variante_id === varianteId))
+    )
+  }
+
+  function actualizarCantidad(id, varianteId, nuevaCantidad) {
+    if (nuevaCantidad < 1) {
+      quitarDelCarrito(id, varianteId)
+      return
+    }
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === id && item.variante_id === varianteId
+          ? { ...item, cantidad: nuevaCantidad }
+          : item
+      )
+    )
+  }
+
+  function vaciarCarrito() {
+    setItems([])
+    setZonaEnvio(null)
+    setCupon(null)
+  }
+
+  // ---------- Sesión con Google ----------
+
+  async function iniciarSesionGoogle() {
+    const volverA = window.location.href.split('#')[0]
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: volverA },
+    })
+  }
+
+  async function cerrarSesion() {
+    await supabase.auth.signOut()
+    setCupon(null)
+  }
+
+  // Cabeceras para las llamadas a la API: incluyen la sesión para que el servidor sepa quién es
+  async function cabecerasConSesion() {
+    const cabeceras = { 'Content-Type': 'application/json' }
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (token) cabeceras.Authorization = `Bearer ${token}`
+    } catch (err) {
+      console.error('No se pudo leer la sesión:', err)
+    }
+    return cabeceras
+  }
+
+  // Comprueba con el servidor que el cupón exista y esté vigente, y lo deja cargado.
+  // Para usar un cupón hay que haber ingresado con Google: si no, se recuerda el código
+  // y se aplica solo apenas la persona ingresa.
+  // El descuento definitivo se vuelve a calcular en el servidor al pagar.
+  async function aplicarCupon(codigo) {
+    try {
+      const respuesta = await fetch('/api/validar-cupon', {
+        method: 'POST',
+        headers: await cabecerasConSesion(),
+        body: JSON.stringify({ codigo }),
+      })
+      const datos = await respuesta.json()
+
+      if (respuesta.status === 401 || datos.login_requerido) {
+        try {
+          localStorage.setItem(CLAVE_CUPON_PENDIENTE, normalizarCodigo(codigo))
+        } catch {}
+        return {
+          ok: false,
+          loginRequerido: true,
+          error: datos.error || 'Para usar un cupón ingresá con Google.',
+        }
+      }
+
+      if (!respuesta.ok || !datos.cupon) {
+        return { ok: false, error: datos.error || 'No pudimos aplicar el cupón.' }
+      }
+
+      setCupon(datos.cupon)
+      return { ok: true, cupon: datos.cupon }
+    } catch (err) {
+      return { ok: false, errorDeRed: true, error: 'No pudimos verificar el cupón. Probá de nuevo.' }
+    }
+  }
+
+  function quitarCupon() {
+    setCupon(null)
+  }
+
+  // Apenas la persona ingresa con Google:
+  // 1) si había un cupón esperando (ej: venía de un QR), se aplica
+  // 2) si no hay ningún cupón puesto, se prueba el de bienvenida (si ya lo usó, no pasa nada)
+  useEffect(() => {
+    if (!cargado || !sesionLista || !usuario) return
+
+    let pendiente = null
+    try {
+      pendiente = localStorage.getItem(CLAVE_CUPON_PENDIENTE)
+      if (pendiente) localStorage.removeItem(CLAVE_CUPON_PENDIENTE)
+    } catch {}
+
+    if (pendiente) {
+      aplicarCupon(pendiente)
+      return
+    }
+
+    if (!cupon) {
+      const claveProbada = `${CLAVE_BIENVENIDA_PROBADA}_${usuario.id}`
+      let yaProbada = false
+      try {
+        yaProbada = Boolean(sessionStorage.getItem(claveProbada))
+      } catch {}
+      if (!yaProbada) {
+        aplicarCupon(CODIGO_BIENVENIDA).then((resultado) => {
+          // Se marca como probada solo si el servidor contestó de verdad (lo aplicó o lo rechazó).
+          // Si falló por red o por falta de sesión, se reintenta la próxima vez.
+          if (resultado.ok || (!resultado.loginRequerido && !resultado.errorDeRed)) {
+            try {
+              sessionStorage.setItem(claveProbada, '1')
+            } catch {}
+          }
+        })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargado, sesionLista, usuario])
+
+  async function pagar(datosCliente, recaptchaToken) {
+    const respuesta = await fetch('/api/crear-preferencia', {
+      method: 'POST',
+      headers: await cabecerasConSesion(),
+      body: JSON.stringify({
+        items,
+        zonaEnvio,
+        datosCliente,
+        recaptchaToken,
+        cuponCodigo: cupon?.codigo || null,
+      }),
+    })
+
+    const datos = await respuesta.json()
+
+    if (datos.init_point) {
+      window.location.href = datos.init_point
+    } else {
+      const error = new Error(datos.error || 'No se pudo generar el link de pago')
+      error.cuponInvalido = Boolean(datos.cupon_invalido)
+      throw error
+    }
+  }
+
+  const totalProductos = items.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
+
+  // Cupón: descuenta solo los productos y solo si se llega a la compra mínima
+  const cuponAplica = Boolean(cupon) && totalProductos >= (Number(cupon.compra_minima) || 0)
+  const descuentoCupon = cuponAplica ? calcularDescuentoCupon(cupon, totalProductos) : 0
+  const totalProductosConCupon = totalProductos - descuentoCupon
+
+  // Envío gratis desde cierto monto de productos, medido DESPUÉS del cupón (ver configEnvioGratis.js)
+  const envioGratis = totalProductosConCupon >= UMBRAL_ENVIO_GRATIS
+  const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - totalProductosConCupon)
+  const costoEnvio = calcularCostoEnvio(totalProductosConCupon, zonaEnvio)
+  const total = totalProductosConCupon + costoEnvio
+  const cantidadTotal = items.reduce((acc, item) => acc + item.cantidad, 0)
+
+  return (
+    <CarritoContext.Provider
+      value={{
+        items,
+        agregarAlCarrito,
+        quitarDelCarrito,
+        actualizarCantidad,
+        vaciarCarrito,
+        total,
+        totalProductos,
+        totalProductosConCupon,
+        costoEnvio,
+        envioGratis,
+        faltaParaEnvioGratis,
+        cantidadTotal,
+        pagar,
+        zonaEnvio,
+        setZonaEnvio,
+        cupon,
+        cuponAplica,
+        descuentoCupon,
+        aplicarCupon,
+        quitarCupon,
+        usuario,
+        sesionLista,
+        iniciarSesionGoogle,
+        cerrarSesion,
+        cabecerasConSesion,
+        panelAbierto,
+        abrirPanel,
+        cerrarPanel,
+        alternarPanel,
+      }}
+    >
+      {children}
+    </CarritoContext.Provider>
+  )
+}
+
+export function useCarrito() {
+  return useContext(CarritoContext)
+}
+
+===== src\lib\configCupones.js =====
+// Archivo: src/lib/configCupones.js
+// Funciones puras (sin base de datos): las usan tanto el navegador como el servidor.
+//
+// Reglas de los cupones:
+// - Descuentan solo los productos, no el envío.
+// - Se aplican ANTES del 5% de transferencia (el 5% se calcula sobre el precio ya con cupón).
+// - El monto del envío gratis se mide DESPUÉS del cupón.
+
+export function normalizarCodigo(texto) {
+  return String(texto || '').trim().toUpperCase().replace(/\s+/g, '')
+}
+
+// Cuánto descuenta el cupón sobre el subtotal de productos. Nunca más que el subtotal.
+export function calcularDescuentoCupon(cupon, subtotal) {
+  if (!cupon || !(subtotal > 0)) return 0
+  const valor = Number(cupon.valor) || 0
+  const bruto = cupon.tipo === 'porcentaje' ? Math.round((subtotal * valor) / 100) : Math.round(valor)
+  return Math.max(0, Math.min(bruto, subtotal))
+}
+
+export function etiquetaDescuento(cupon) {
+  if (cupon.tipo === 'porcentaje') return `−${Number(cupon.valor)}%`
+  return `−$${Number(cupon.valor).toLocaleString('es-AR')}`
+}
+
+// Texto de la línea que queda en el pedido, el admin y los emails
+export function nombreLineaCupon(cupon) {
+  return `Cupón ${cupon.codigo} (${etiquetaDescuento(cupon)})`
+}
+
+
+===== src\lib\configEnvioGratis.js =====
+// Envío gratis a partir de cierto monto.
+// Archivo: src/lib/configEnvioGratis.js
+//
+// El monto se compara contra el total de los PRODUCTOS (antes del descuento por transferencia
+// y sin contar el envío). Para cambiar el monto, editá UMBRAL_ENVIO_GRATIS y hacé git push.
+
+export const UMBRAL_ENVIO_GRATIS = 150000
+
+// Cuando el envío es gratis, el cliente NO elige empresa: el sistema la elige solo.
+// Orden de preferencia (siempre a domicilio). Se usa la primera que tenga tarifa para su código postal.
+export const EMPRESAS_ENVIO_GRATIS = ['urbano', 'oca']
+
+// Dentro de cada empresa se prefiere este servicio (OCA lo llama "Sucursal a puerta").
+// Si no aparece, se usa el más barato de los que llegan a la puerta del cliente.
+export const SERVICIOS_PREFERIDOS = ['sucursal a puerta']
+
+// Si ninguna de las anteriores llega a ese código postal, se usa la a domicilio más barata de
+// cualquier otra empresa, para no perder la venta. Poné false si preferís que no se pueda comprar.
+export const USAR_OTRAS_EMPRESAS_SI_FALTAN = true
+
+// Lo que se guarda como "zona de envío" cuando el envío es gratis (el cliente no ve la empresa)
+export const ID_ENVIO_GRATIS_AUTO = 'envio-gratis-auto'
+export const NOMBRE_ENVIO_GRATIS = 'Envío gratis a domicilio'
+
+// Devuelve el costo de envío que realmente se cobra
+export function calcularCostoEnvio(subtotalProductos, zonaEnvio) {
+  if (!zonaEnvio) return 0
+  if (subtotalProductos >= UMBRAL_ENVIO_GRATIS) return 0
+  return Number(zonaEnvio.costo) || 0
+}
+
+function normalizar(texto) {
+  return String(texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+// Una opción es "a domicilio" si el cliente la recibe en su puerta.
+// OCA: "Sucursal a puerta" y "Puerta a puerta" llegan al domicilio; "Sucursal a sucursal" y
+// "Puerta a sucursal" no (el destino es una sucursal).
+function esADomicilio(opcion) {
+  const texto = `${normalizar(opcion.service)} ${normalizar(opcion.serviceCode)}`
+  if (/\ba\s+(sucursal|agencia|punto|locker)/.test(texto)) return false
+  if (/puerta|domicilio|home|door/.test(texto)) return true
+  if (/sucursal|agencia|punto|retiro|pickup|locker/.test(texto)) return false
+  if (opcion.branches?.length > 0) return false
+  return true
+}
+
+function esServicioPreferido(opcion) {
+  const texto = `${normalizar(opcion.service)} ${normalizar(opcion.serviceCode)}`
+  return SERVICIOS_PREFERIDOS.some((s) => texto.includes(s))
+}
+
+// Primero el servicio preferido y, entre iguales, el más barato
+function ordenar(opciones) {
+  return [...opciones].sort(
+    (a, b) =>
+      Number(esServicioPreferido(b)) - Number(esServicioPreferido(a)) || precioDe(a) - precioDe(b)
+  )
+}
+
+function precioDe(opcion) {
+  return Number(opcion.price) || 0
+}
+
+// De todas las tarifas que devuelve la cotización, elige la que se usa cuando el envío es gratis
+export function elegirOpcionEnvioGratis(opciones) {
+  const aDomicilio = (opciones || []).filter(esADomicilio)
+
+  for (const empresa of EMPRESAS_ENVIO_GRATIS) {
+    const candidatas = aDomicilio.filter((o) =>
+      `${normalizar(o.carrierSlug)} ${normalizar(o.carrier)}`.includes(empresa)
+    )
+    if (candidatas.length > 0) {
+      return ordenar(candidatas)[0]
+    }
+  }
+
+  if (USAR_OTRAS_EMPRESAS_SI_FALTAN && aDomicilio.length > 0) {
+    return ordenar(aDomicilio)[0]
+  }
+
+  return null
+}
+
+===== src\lib\cupones.js =====
+// DESTINO: src/lib/cupones.js  (reemplaza el archivo actual)
+// SOLO para el servidor (rutas api): valida cupones, anota sus usos y reconoce
+// a la persona que ingresó con Google.
+
+import { createClient } from '@supabase/supabase-js'
+import { normalizarCodigo, calcularDescuentoCupon } from '@/lib/configCupones'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+// Mensaje único para todos los casos, así nadie puede averiguar qué códigos existen
+const MENSAJE_NO_VALIDO = 'El cupón no es válido o ya no está disponible.'
+export const MENSAJE_LOGIN = 'Para usar un cupón ingresá con Google.'
+export const MENSAJE_YA_USADO = 'Ya usaste este cupón con tu cuenta.'
+
+// Lee la sesión de Google que el navegador manda en la cabecera Authorization.
+// Devuelve el usuario, o null si no hay sesión válida.
+export async function usuarioDesdeRequest(request) {
+  const cabecera = request.headers.get('authorization') || ''
+  const token = cabecera.startsWith('Bearer ') ? cabecera.slice(7).trim() : ''
+  if (!token) return null
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token)
+  if (error || !data?.user) return null
+  return data.user
+}
+
+// ¿Esta cuenta ya usó este cupón?
+async function cuentaYaUsoCupon(userId, codigo) {
+  const { data, error } = await supabaseAdmin
+    .from('cupones_usos')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error al revisar los usos del cupón:', error)
+    return false
+  }
+  return Boolean(data)
+}
+
+// Comprueba que el cupón exista y esté vigente (sin mirar el monto de la compra).
+// Si se pasa userId, también comprueba que esa cuenta no lo haya usado antes.
+export async function buscarCuponValido(codigoCrudo, userId = null) {
+  const codigo = normalizarCodigo(codigoCrudo)
+  if (!codigo) return { ok: false, error: 'Ingresá un código de cupón.' }
+
+  const { data: cupon, error } = await supabaseAdmin
+    .from('cupones')
+    .select('*')
+    .eq('codigo', codigo)
+    .maybeSingle()
+
+  if (error) {
+    console.error('Error al buscar el cupón:', error)
+    return { ok: false, error: 'No pudimos verificar el cupón. Probá de nuevo.' }
+  }
+
+  if (!cupon || !cupon.activo) return { ok: false, error: MENSAJE_NO_VALIDO }
+
+  const ahora = new Date()
+  if (cupon.fecha_inicio && new Date(cupon.fecha_inicio) > ahora) return { ok: false, error: MENSAJE_NO_VALIDO }
+  if (cupon.fecha_fin && new Date(cupon.fecha_fin) < ahora) return { ok: false, error: MENSAJE_NO_VALIDO }
+  if (cupon.max_usos != null && cupon.usos >= cupon.max_usos) return { ok: false, error: MENSAJE_NO_VALIDO }
+
+  if (userId && (await cuentaYaUsoCupon(userId, cupon.codigo))) {
+    return { ok: false, error: MENSAJE_YA_USADO }
+  }
+
+  return { ok: true, cupon }
+}
+
+// Valida el cupón contra el subtotal real del pedido y calcula el descuento
+export async function validarCuponParaPedido(codigo, subtotal, userId = null) {
+  const resultado = await buscarCuponValido(codigo, userId)
+  if (!resultado.ok) return resultado
+
+  const minimo = Number(resultado.cupon.compra_minima) || 0
+  if (subtotal < minimo) {
+    return {
+      ok: false,
+      error: `Este cupón requiere una compra mínima de $${minimo.toLocaleString('es-AR')} en productos.`,
+    }
+  }
+
+  const descuento = calcularDescuentoCupon(resultado.cupon, subtotal)
+  if (descuento <= 0) return { ok: false, error: MENSAJE_NO_VALIDO }
+
+  return { ok: true, cupon: resultado.cupon, descuento }
+}
+
+// Suma un uso de forma atómica. Devuelve false si el cupón se agotó justo en ese momento.
+export async function usarCupon(codigo) {
+  const { data, error } = await supabaseAdmin.rpc('usar_cupon', { p_codigo: codigo })
+  if (error) {
+    console.error('Error al registrar el uso del cupón:', error)
+    return false
+  }
+  return data === true
+}
+
+// Devuelve el uso si el pedido no se pudo completar
+export async function devolverUsoCupon(codigo) {
+  const { error } = await supabaseAdmin.rpc('devolver_uso_cupon', { p_codigo: codigo })
+  if (error) console.error('Error al devolver el uso del cupón:', error)
+}
+
+// Anota que esta cuenta usó el cupón. Devuelve 'ok', 'ya_usado' o 'error'.
+// El índice único de la base impide que una misma cuenta lo use dos veces,
+// aunque dos pedidos lleguen al mismo tiempo.
+export async function reservarUsoCuenta(userId, codigo, pedidoRef = null) {
+  const { error } = await supabaseAdmin.from('cupones_usos').insert({
+    user_id: userId,
+    codigo,
+    pedido_id: pedidoRef != null ? String(pedidoRef) : null,
+  })
+
+  if (!error) return 'ok'
+  if (error.code === '23505') return 'ya_usado'
+  console.error('Error al anotar el uso del cupón por cuenta:', error)
+  return 'error'
+}
+
+// Deshace la anotación si el pedido no se pudo completar
+export async function liberarUsoCuenta(userId, codigo) {
+  const { error } = await supabaseAdmin
+    .from('cupones_usos')
+    .delete()
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+  if (error) console.error('Error al liberar el uso del cupón por cuenta:', error)
+}
+
+// Une el uso del cupón con el número de pedido (para tener el registro completo)
+export async function vincularUsoConPedido(userId, codigo, pedidoId) {
+  const { error } = await supabaseAdmin
+    .from('cupones_usos')
+    .update({ pedido_id: String(pedidoId) })
+    .eq('user_id', userId)
+    .eq('codigo', codigo)
+  if (error) console.error('Error al vincular el uso del cupón con el pedido:', error)
+}
+
+// Mercado Pago no acepta líneas con precio negativo: el descuento se reparte entre los
+// precios de los productos, proporcionalmente, y la suma queda igual al total con cupón.
+export function repartirDescuentoEnItems(items, descuento) {
+  if (!descuento || descuento <= 0) return items
+
+  const subtotal = items.reduce((acc, i) => acc + i.unit_price * i.quantity, 0)
+  if (subtotal <= 0) return items
+
+  let restante = descuento
+  return items.map((item, idx) => {
+    const totalLinea = item.unit_price * item.quantity
+    const esUltima = idx === items.length - 1
+    let descLinea = esUltima ? restante : Math.round((descuento * totalLinea) / subtotal)
+    descLinea = Math.max(0, Math.min(descLinea, totalLinea, restante))
+    restante -= descLinea
+    const nuevoPrecio = Math.round(((totalLinea - descLinea) / item.quantity) * 100) / 100
+    return { ...item, unit_price: nuevoPrecio }
+  })
+}
+
+===== src\lib\enviarEmails.js =====
+import { Resend } from 'resend'
+import { DATOS_BANCARIOS, WHATSAPP_NEGOCIO } from './configTransferencia'
+import { textoConfeccion } from './configConfeccion'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+function formatearItems(items) {
+  return items
+    .map((item) => {
+      const foto = item.imagen_url
+        ? `<td style="width: 64px; padding-right: 12px; vertical-align: top;">
+             <table role="presentation" width="64" height="64" style="width: 64px; height: 64px; background-color: #FAF6F0; border: 1px solid #E4DCCF; border-radius: 8px;">
+               <tr>
+                 <td align="center" valign="middle" style="text-align: center; vertical-align: middle;">
+                   <img src="${item.imagen_url}" alt="${item.nombre}" width="56" style="max-width: 56px; max-height: 56px; display: block; margin: 0 auto;" />
+                 </td>
+               </tr>
+             </table>
+           </td>`
+        : ''
+
+      // Una línea con precio negativo es un descuento (ej: transferencia)
+      const subtotal = item.precio * item.cantidad
+      const importe = subtotal < 0 ? `-$${Math.abs(subtotal)}` : `$${subtotal}`
+      const detalle = subtotal < 0 ? importe : `Cantidad: ${item.cantidad} — ${importe}`
+
+      return `
+        <table role="presentation" width="100%" style="margin-bottom: 10px;">
+          <tr>
+            ${foto}
+            <td style="vertical-align: top; font-size: 14px; color: #2E2A26;">
+              <div>${item.nombre}</div>
+              <div style="color: #8A8378;">${detalle}</div>
+            </td>
+          </tr>
+        </table>
+      `
+    })
+    .join('')
+}
+
+// Bloque de entrega para los emails al cliente: tiempo de confección y, si corresponde, aviso de retiro
+function bloqueEntrega(pedido) {
+  const esRetiro = pedido.zona_envio === 'Retiro en persona'
+  return `
+          <p style="color: #2E2A26;"><strong>Tiempo de confección estimado:</strong> ${textoConfeccion()}.</p>
+          ${esRetiro ? '<p style="color: #2E2A26;"><strong>Retiro en persona:</strong> te avisamos por WhatsApp o por email cuando tu pedido esté listo, y coordinamos el día y el horario para retirarlo.</p>' : ''}`
+}
+
+   function lineaEnvio(pedido) {
+     if (!pedido.zona_envio) return ''
+     const esRetiro = pedido.zona_envio === 'Retiro en persona'
+     const texto =
+       Number(pedido.costo_envio) === 0 && !esRetiro
+         ? 'Costo de envío: ¡Gratis!'
+         : `Envío (${pedido.zona_envio}): $${pedido.costo_envio}`
+     return `<p style="margin: 10px 0 0; color: #2E2A26;">${texto}</p>`
+   }
+
+function formatearDireccion(direccion) {
+  if (!direccion) return ''
+  const partes = [
+    `${direccion.calle} ${direccion.numero}`,
+    direccion.pisoDepto ? direccion.pisoDepto : null,
+    direccion.ciudad,
+    direccion.codigoPostal ? `CP ${direccion.codigoPostal}` : null,
+  ].filter(Boolean)
+  return partes.join(', ')
+}
+
+export async function enviarEmailConfirmacionCliente(pedido) {
+  if (!pedido.comprador_email) return
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: pedido.comprador_email,
+      replyTo: 'abel.nygaard@gmail.com',
+      subject: '¡Gracias por tu compra! - dimedetiambos',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">¡Gracias por tu compra, ${pedido.cliente_nombre || ''}!</h2>
+          <p style="color: #2E2A26;">Recibimos tu pedido y ya está siendo procesado.</p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
+            <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
+            ${formatearItems(pedido.items)}
+         ${lineaEnvio(pedido)}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
+          </div>
+
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueEntrega(pedido)}
+          ${pedido.factura_pdf_url ? `<p><a href="${pedido.factura_pdf_url}" style="color: #2F6B63;">📄 Ver tu factura</a></p>` : ''}
+
+          <p style="margin-top: 24px; color: #8A8378; font-size: 14px;">
+            Cualquier consulta, respondé este mail o escribinos por WhatsApp.
+          </p>
+        </div>
+      `,
+    })
+      if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email enviado OK:', data)
+    }
+  } catch (error) {
+    console.error('Error al enviar email de confirmación al cliente:', error)
+  }
+}
+
+export async function enviarEmailNotificacionVenta(pedido) {
+  const emailAdmin = process.env.ADMIN_NOTIFICATION_EMAIL
+  if (!emailAdmin) return
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: emailAdmin,
+      subject: `Nueva venta 💰 - $${pedido.total}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">Nueva venta aprobada</h2>
+
+          <p style="color: #2E2A26;"><strong>Cliente:</strong> ${pedido.cliente_nombre || 'Sin nombre'}</p>
+          <p style="color: #2E2A26;"><strong>Email:</strong> ${pedido.comprador_email || '-'}</p>
+          <p style="color: #2E2A26;"><strong>Teléfono:</strong> ${pedido.cliente_telefono || '-'}</p>
+          <p style="color: #2E2A26;"><strong>DNI:</strong> ${pedido.cliente_dni || '-'}</p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
+            ${formatearItems(pedido.items)}
+         ${lineaEnvio(pedido)}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
+          </div>
+
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
+
+          <p style="margin-top: 20px; font-size: 13px; color: #8A8378;">
+            ${pedido.metodo_pago === 'transferencia' ? `Pedido #${pedido.id} · pagado por transferencia` : `Pago #${pedido.mercadopago_payment_id}`}
+          </p>
+        </div>
+      `,
+    })
+      if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email enviado OK:', data)
+    }
+  } catch (error) {
+    console.error('Error al enviar email de notificación de venta:', error)
+  }
+}
+
+// ---------- Pago por transferencia ----------
+
+// Al cliente, apenas hace el pedido: con los datos para transferir
+export async function enviarEmailInstruccionesTransferencia(pedido) {
+  if (!pedido.comprador_email) return
+
+  const mensajeWhatsApp = `Hola! Hice el pedido #${pedido.id} por transferencia por $${pedido.total}. Te mando el comprobante.`
+  const linkWhatsApp = `https://wa.me/${WHATSAPP_NEGOCIO}?text=${encodeURIComponent(mensajeWhatsApp)}`
+
+  const filasBancarias = [
+    ['Titular', DATOS_BANCARIOS.titular],
+    ['Banco', DATOS_BANCARIOS.banco],
+    ['Alias', DATOS_BANCARIOS.alias],
+    ['CBU', DATOS_BANCARIOS.cbu],
+    ['CUIT', DATOS_BANCARIOS.cuit],
+  ]
+    .filter(([, valor]) => valor)
+    .map(
+      ([etiqueta, valor]) =>
+        `<p style="margin: 4px 0; color: #2E2A26;"><strong>${etiqueta}:</strong> ${valor}</p>`
+    )
+    .join('')
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: pedido.comprador_email,
+      replyTo: 'abel.nygaard@gmail.com',
+      subject: `Tu pedido #${pedido.id}: datos para la transferencia - dimedetiambos`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">¡Recibimos tu pedido, ${pedido.cliente_nombre || ''}!</h2>
+          <p style="color: #2E2A26;">Pedido <strong>#${pedido.id}</strong>. Para confirmarlo, hacé la transferencia con estos datos:</p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
+            <p style="margin: 0 0 4px; color: #8A8378; font-size: 13px;">Total a transferir</p>
+            <p style="margin: 0 0 14px; font-weight: bold; font-size: 24px; color: #2F6B63;">$${pedido.total}</p>
+            ${filasBancarias}
+          </div>
+
+          <p style="color: #2E2A26;">
+            Después, mandanos el comprobante por WhatsApp indicando tu número de pedido:
+          </p>
+          <p style="margin: 16px 0;">
+            <a href="${linkWhatsApp}" style="background-color: #2F6B63; color: #ffffff; padding: 12px 20px; border-radius: 999px; text-decoration: none; font-weight: bold; display: inline-block;">
+              Enviar comprobante por WhatsApp
+            </a>
+          </p>
+          <p style="color: #2E2A26;">
+            Cuando veamos el pago te lo confirmamos por mail y empezamos a confeccionar tu pedido.
+          </p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
+            <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
+            ${formatearItems(pedido.items)}
+         ${lineaEnvio(pedido)}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
+          </div>
+
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueEntrega(pedido)}
+
+          <p style="margin-top: 24px; color: #8A8378; font-size: 14px;">
+            Cualquier consulta, respondé este mail o escribinos por WhatsApp.
+          </p>
+        </div>
+      `,
+    })
+    if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email de transferencia enviado OK:', data)
+    }
+  } catch (error) {
+    console.error('Error al enviar email de instrucciones de transferencia:', error)
+  }
+}
+
+// A Abel: hay un pedido esperando que confirme el pago
+export async function enviarEmailNotificacionTransferencia(pedido) {
+  const emailAdmin = process.env.ADMIN_NOTIFICATION_EMAIL
+  if (!emailAdmin) return
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: emailAdmin,
+      subject: `Pedido por transferencia pendiente 🏦 - $${pedido.total}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background-color: #FAF6F0; padding: 24px;">
+          <h2 style="color: #2F6B63; font-weight: bold;">Pedido #${pedido.id} por transferencia</h2>
+          <p style="color: #2E2A26;">Está <strong>pendiente de pago</strong>. Cuando veas la plata en tu cuenta, confirmalo desde el admin.</p>
+
+          <p style="color: #2E2A26;"><strong>Cliente:</strong> ${pedido.cliente_nombre || 'Sin nombre'}</p>
+          <p style="color: #2E2A26;"><strong>Email:</strong> ${pedido.comprador_email || '-'}</p>
+          <p style="color: #2E2A26;"><strong>Teléfono:</strong> ${pedido.cliente_telefono || '-'}</p>
+          <p style="color: #2E2A26;"><strong>DNI:</strong> ${pedido.cliente_dni || '-'}</p>
+
+          <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
+            ${formatearItems(pedido.items)}
+         ${lineaEnvio(pedido)}
+            <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total a recibir: $${pedido.total}</p>
+          </div>
+
+          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
+
+          <p style="margin-top: 20px;">
+            <a href="https://www.dimedetiambos.com.ar/admin" style="color: #2F6B63; font-weight: bold;">Ir al panel para confirmar el pago</a>
+          </p>
+        </div>
+      `,
+    })
+    if (error) {
+      console.error('Resend devolvió un error:', error)
+    } else {
+      console.log('Email de aviso de transferencia enviado OK:', data)
+    }
+  } catch (error) {
+    console.error('Error al enviar email de aviso de transferencia:', error)
+  }
+}

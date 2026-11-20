@@ -1,8 +1,10 @@
+// DESTINO: src/app/pago-transferencia/page.js  (reemplaza el archivo actual)
 'use client'
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { DATOS_BANCARIOS, WHATSAPP_NEGOCIO } from '@/lib/configTransferencia'
+import { ZONA_RETIRO } from '@/lib/configRetiro'
 
 function formatearMonto(valor) {
   return Number(valor).toLocaleString('es-AR')
@@ -137,6 +139,15 @@ export default function PagoTransferencia() {
       >
         Enviar comprobante por WhatsApp
       </a>
+
+      {pedido.retiro && (
+        <div style={{ backgroundColor: '#f0f7f5', border: '1px solid #cfe3de', borderRadius: '10px', padding: '14px 16px', marginTop: '20px' }}>
+          <p style={{ margin: 0, fontWeight: 'bold', color: '#2F6B63' }}>📍 Retirás en: zona {ZONA_RETIRO}</p>
+          <p style={{ margin: '6px 0 0', fontSize: '14px', color: '#555' }}>
+            Cuando tu pedido esté listo te avisamos por WhatsApp o por email y coordinamos el día y el horario para retirarlo.
+          </p>
+        </div>
+      )}
 
       <p style={{ marginTop: '20px', fontSize: '14px', color: '#555' }}>
         Cuando veamos el pago te lo confirmamos por mail y empezamos a confeccionar tu pedido. También te enviamos

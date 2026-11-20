@@ -1,8 +1,14 @@
+// DESTINO: src/lib/enviarEmails.js  (reemplaza el archivo actual)
 import { Resend } from 'resend'
 import { DATOS_BANCARIOS, WHATSAPP_NEGOCIO } from './configTransferencia'
 import { textoConfeccion } from './configConfeccion'
+import { ZONA_RETIRO, ETIQUETA_RETIRO } from './configRetiro'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
+
+function esPedidoConRetiro(pedido) {
+  return pedido.zona_envio === 'Retiro en persona'
+}
 
 function formatearItems(items) {
   return items
@@ -41,21 +47,22 @@ function formatearItems(items) {
 
 // Bloque de entrega para los emails al cliente: tiempo de confección y, si corresponde, aviso de retiro
 function bloqueEntrega(pedido) {
-  const esRetiro = pedido.zona_envio === 'Retiro en persona'
+  const esRetiro = esPedidoConRetiro(pedido)
   return `
           <p style="color: #2E2A26;"><strong>Tiempo de confección estimado:</strong> ${textoConfeccion()}.</p>
           ${esRetiro ? '<p style="color: #2E2A26;"><strong>Retiro en persona:</strong> te avisamos por WhatsApp o por email cuando tu pedido esté listo, y coordinamos el día y el horario para retirarlo.</p>' : ''}`
 }
 
-   function lineaEnvio(pedido) {
-     if (!pedido.zona_envio) return ''
-     const esRetiro = pedido.zona_envio === 'Retiro en persona'
-     const texto =
-       Number(pedido.costo_envio) === 0 && !esRetiro
-         ? 'Costo de envío: ¡Gratis!'
-         : `Envío (${pedido.zona_envio}): $${pedido.costo_envio}`
-     return `<p style="margin: 10px 0 0; color: #2E2A26;">${texto}</p>`
-   }
+// Línea de costo de envío. En retiro no se muestra: el bloque "Retirás en" ya lo explica.
+function lineaEnvio(pedido) {
+  if (!pedido.zona_envio) return ''
+  if (esPedidoConRetiro(pedido)) return ''
+  const texto =
+    Number(pedido.costo_envio) === 0
+      ? 'Costo de envío: ¡Gratis!'
+      : `Envío (${pedido.zona_envio}): $${pedido.costo_envio}`
+  return `<p style="margin: 10px 0 0; color: #2E2A26;">${texto}</p>`
+}
 
 function formatearDireccion(direccion) {
   if (!direccion) return ''
@@ -66,6 +73,17 @@ function formatearDireccion(direccion) {
     direccion.codigoPostal ? `CP ${direccion.codigoPostal}` : null,
   ].filter(Boolean)
   return partes.join(', ')
+}
+
+// Dirección o lugar de retiro:
+// - si es retiro, dice dónde se retira (en lugar de "Dirección de envío")
+// - si es envío, muestra la dirección del cliente
+function bloqueDireccion(pedido, etiquetaEnvio, etiquetaRetiro) {
+  if (esPedidoConRetiro(pedido)) {
+    return `<p style="color: #2E2A26;"><strong>${etiquetaRetiro}:</strong><br>zona ${ZONA_RETIRO}</p>`
+  }
+  if (!pedido.direccion) return ''
+  return `<p style="color: #2E2A26;"><strong>${etiquetaEnvio}:</strong><br>${formatearDireccion(pedido.direccion)}</p>`
 }
 
 export async function enviarEmailConfirmacionCliente(pedido) {
@@ -85,11 +103,11 @@ export async function enviarEmailConfirmacionCliente(pedido) {
           <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
             <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
             ${formatearItems(pedido.items)}
-         ${lineaEnvio(pedido)}
+            ${lineaEnvio(pedido)}
             <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
           </div>
 
-          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueDireccion(pedido, 'Dirección de envío', ETIQUETA_RETIRO)}
           ${bloqueEntrega(pedido)}
           ${pedido.factura_pdf_url ? `<p><a href="${pedido.factura_pdf_url}" style="color: #2F6B63;">📄 Ver tu factura</a></p>` : ''}
 
@@ -99,7 +117,7 @@ export async function enviarEmailConfirmacionCliente(pedido) {
         </div>
       `,
     })
-      if (error) {
+    if (error) {
       console.error('Resend devolvió un error:', error)
     } else {
       console.log('Email enviado OK:', data)
@@ -129,11 +147,11 @@ export async function enviarEmailNotificacionVenta(pedido) {
 
           <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
             ${formatearItems(pedido.items)}
-         ${lineaEnvio(pedido)}
+            ${lineaEnvio(pedido)}
             <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
           </div>
 
-          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueDireccion(pedido, 'Dirección', 'Retira en')}
           ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
 
           <p style="margin-top: 20px; font-size: 13px; color: #8A8378;">
@@ -142,7 +160,7 @@ export async function enviarEmailNotificacionVenta(pedido) {
         </div>
       `,
     })
-      if (error) {
+    if (error) {
       console.error('Resend devolvió un error:', error)
     } else {
       console.log('Email enviado OK:', data)
@@ -207,11 +225,11 @@ export async function enviarEmailInstruccionesTransferencia(pedido) {
           <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 20px 0;">
             <p style="margin: 0 0 12px; font-weight: bold; color: #2E2A26;">Resumen del pedido</p>
             ${formatearItems(pedido.items)}
-         ${lineaEnvio(pedido)}
+            ${lineaEnvio(pedido)}
             <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total: $${pedido.total}</p>
           </div>
 
-          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección de envío:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueDireccion(pedido, 'Dirección de envío', ETIQUETA_RETIRO)}
           ${bloqueEntrega(pedido)}
 
           <p style="margin-top: 24px; color: #8A8378; font-size: 14px;">
@@ -252,11 +270,11 @@ export async function enviarEmailNotificacionTransferencia(pedido) {
 
           <div style="background-color: #ffffff; border: 1px solid #E4DCCF; padding: 16px; border-radius: 10px; margin: 16px 0;">
             ${formatearItems(pedido.items)}
-         ${lineaEnvio(pedido)}
+            ${lineaEnvio(pedido)}
             <p style="margin: 10px 0 0; font-weight: bold; font-size: 18px; color: #2F6B63;">Total a recibir: $${pedido.total}</p>
           </div>
 
-          ${pedido.direccion ? `<p style="color: #2E2A26;"><strong>Dirección:</strong><br>${formatearDireccion(pedido.direccion)}</p>` : ''}
+          ${bloqueDireccion(pedido, 'Dirección', 'Retira en')}
           ${pedido.notas ? `<p style="color: #2E2A26;"><strong>Notas:</strong> ${pedido.notas}</p>` : ''}
 
           <p style="margin-top: 20px;">

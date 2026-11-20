@@ -1,3 +1,4 @@
+// DESTINO: src/app/checkout/SelectorEnvio.js  (reemplaza el archivo actual)
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -8,6 +9,7 @@ import {
   elegirOpcionEnvioGratis,
 } from '@/lib/configEnvioGratis'
 import { textoConfeccion } from '@/lib/configConfeccion'
+import { ZONA_RETIRO } from '@/lib/configRetiro'
 
 // Opción de entrega sin envío. El checkout reconoce este nombre y no pide la dirección.
 const RETIRO_EN_PERSONA = {
@@ -35,6 +37,17 @@ function TiemposEntrega({ opcion }) {
       <div>🧵 Confección: {textoConfeccion()}</div>
       <div>🚚 Envío: {opcion.envioTexto}</div>
     </div>
+  )
+}
+
+// Texto bajo la opción "Retiro en persona": dice dónde se retira
+function TextoRetiro() {
+  return (
+    <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px', lineHeight: 1.5 }}>
+      <span style={{ color: '#2F6B63', fontWeight: 600 }}>📍 Retirás en zona {ZONA_RETIRO}.</span>
+      <br />
+      Te avisamos cuando esté listo y coordinamos el día y el horario del retiro.
+    </small>
   )
 }
 
@@ -213,9 +226,7 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
             style={{ marginRight: '10px' }}
           />
           <strong>Retiro en persona</strong> — Gratis
-          <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
-            Te avisamos cuando esté listo y coordinamos el retiro.
-          </small>
+          <TextoRetiro />
         </label>
       </div>
     )
@@ -247,10 +258,7 @@ export default function SelectorEnvio({ codigoPostal: cpDireccion }) {
           style={{ marginRight: '10px' }}
         />
         <strong>Retiro en persona</strong> — Gratis
-        <br />
-        <small style={{ color: '#666', marginLeft: '24px', display: 'block', marginTop: '4px' }}>
-          Te avisamos cuando esté listo y coordinamos el retiro.
-        </small>
+        <TextoRetiro />
       </label>
 
       <p style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '15px' }}>
