@@ -2,6 +2,7 @@
 
 import Script from 'next/script'
 import './checkout.css'
+import './checkout-movil.css'
 
 import { useState, useEffect, useRef } from 'react'
 import { useCarrito } from '@/lib/carrito'
@@ -137,27 +138,40 @@ export default function Checkout() {
     setCodigoCupon('')
   }
 
+  // Devuelve null si está todo bien, o { mensaje, campo } con el primer dato que falta
   function validar() {
     if (cupon && !usuario) {
-      return 'Para usar el cupón ingresá con Google (o quitá el cupón para seguir sin cuenta).'
+      return { mensaje: 'Para usar el cupón ingresá con Google (o quitá el cupón para seguir sin cuenta).', campo: 'cupon' }
     }
-    if (!datos.nombre.trim()) return 'Ingresá tu nombre completo'
-    if (!datos.email.trim()) return 'Ingresá tu email'
-    if (!datos.telefono.trim()) return 'Ingresá tu teléfono'
+    if (!datos.nombre.trim()) return { mensaje: 'Ingresá tu nombre completo', campo: 'nombre' }
+    if (!datos.email.trim()) return { mensaje: 'Ingresá tu email', campo: 'email' }
+    if (!datos.telefono.trim()) return { mensaje: 'Ingresá tu teléfono', campo: 'telefono' }
     if (envioGratis && !esRetiro) {
       // Con envío gratis la empresa se elige sola al cargar el código postal
       if (zonaEnvio?.id !== ID_ENVIO_GRATIS_AUTO) {
-        return 'Todavía no pudimos confirmar tu envío gratis. Revisá tu código postal.'
+        return { mensaje: 'Todavía no pudimos confirmar tu envío gratis. Revisá tu código postal.', campo: 'codigoPostal' }
       }
     } else if (!zonaEnvio) {
-      return 'Elegí una zona de envío'
+      return { mensaje: 'Elegí una zona de envío', campo: 'envio' }
     }
     if (!esRetiro) {
-      if (!datos.calle.trim() || !datos.numero.trim() || !datos.ciudad.trim() || !datos.codigoPostal.trim()) {
-        return 'Completá la dirección de envío completa'
-      }
+      if (!datos.calle.trim()) return { mensaje: 'Completá la calle', campo: 'calle' }
+      if (!datos.numero.trim()) return { mensaje: 'Completá el número', campo: 'numero' }
+      if (!datos.ciudad.trim()) return { mensaje: 'Completá la ciudad', campo: 'ciudad' }
+      if (!datos.codigoPostal.trim()) return { mensaje: 'Completá el código postal', campo: 'codigoPostal' }
     }
     return null
+  }
+
+  // Lleva la pantalla al campo que falta y lo deja seleccionado
+  function irAlCampo(campo) {
+    let el = null
+    if (campo === 'envio') el = document.querySelector('.checkout-delivery-selector')
+    else if (campo === 'cupon') el = document.querySelector('.checkout-coupon-area')
+    else if (campo) el = document.querySelector(`#checkout-form [name="${campo}"]`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (typeof el.focus === 'function') setTimeout(() => el.focus({ preventScroll: true }), 400)
   }
 
   async function handleSubmit(e) {
@@ -170,7 +184,8 @@ export default function Checkout() {
 
     const error = validar()
     if (error) {
-      alert(error)
+      alert(error.mensaje)
+      irAlCampo(error.campo)
       return
     }
 
@@ -435,7 +450,7 @@ export default function Checkout() {
             <p>Tu información se utiliza únicamente para procesar y entregar tu pedido.</p>
           </div>
 
-          {/* Solo en celular: botón al final del formulario, donde termina de completar los datos */}
+          {/* Solo en celular: barra fija abajo con el total y el botón de pago (los estilos están en checkout-movil.css) */}
           <div className="checkout-mobile-submit">
             <div className="checkout-mobile-total">
               <span>Total a pagar</span>
@@ -564,7 +579,6 @@ export default function Checkout() {
       </form>
     </main>
   )
-
 }
 
 const inputStyle = {
@@ -592,4 +606,3 @@ function opcionPagoStyle(seleccionada) {
     backgroundColor: seleccionada ? '#F0F7F5' : '#FFFEFC',
   }
 }
-
