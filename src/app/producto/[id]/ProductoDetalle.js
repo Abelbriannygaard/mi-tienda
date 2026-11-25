@@ -1,7 +1,8 @@
-// DESTINO: src/app/producto/[id]/ProductoDetalle.js  (reemplaza el archivo actual)
 'use client'
 
 import CarritoIcono from '../../CarritoIcono'
+import CalculadorEnvio from '../../CalculadorEnvio'
+import BloqueConfianza from '../../BloqueConfianza'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useCarrito } from '@/lib/carrito'
@@ -290,6 +291,13 @@ if (typeof window.fbq === 'function') {
             >
               {varianteElegida?.stock === 0 ? 'Sin stock disponible' : 'Agregar al carrito'}
             </button>
+
+            {/* Costo de envío a la vista, antes de llegar al checkout */}
+            <CalculadorEnvio precio={producto.precio} cantidad={cantidad} />
+
+            <div className="mt-5">
+              <BloqueConfianza compacto />
+            </div>
           </div>
         </div>
 

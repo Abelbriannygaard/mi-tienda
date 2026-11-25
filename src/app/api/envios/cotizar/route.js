@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { resolverProvincia } from '@/lib/resolverProvincia'
-import { plazoConfeccion } from '@/lib/configConfeccion'
 const CARRIERS = ['correoArgentino', 'andreani', 'urbano', 'oca']
 
 // Plazos de envío que se muestran al cliente. Se editan acá y no dependen de lo que informe el correo.
@@ -24,10 +23,6 @@ function plazoDeEnvio(postalCode) {
   if (CABA_CUENTA_COMO_BSAS && cp >= 1000 && cp <= 1499) return ENVIO_EN_BSAS
 
   return ENVIO_RESTO_DEL_PAIS
-}
-
-function rangoTexto(min, max) {
-  return min === max ? `${min}` : `${min} a ${max}`
 }
 
 async function cotizarConCarrier(carrier, apiKey, postalCode, weight, height) {
@@ -184,11 +179,8 @@ export async function POST(req) {
       )
     }
 
-    // El plazo de confección sale de src/lib/configConfeccion.js (el mismo que ve el cliente en todo el sitio)
-    const confeccion = plazoConfeccion()
+    // Solo se informa el plazo del correo (sin días de confección)
     const envio = plazoDeEnvio(postalCode)
-    const totalMin = confeccion.min + envio.min
-    const totalMax = confeccion.max + envio.max
 
     const rates = todasLasCotizaciones
       .map((rate) => {
@@ -202,15 +194,10 @@ export async function POST(req) {
           service:
             rate.serviceDescription || rate.service || 'Estándar',
           price: Math.round(rate.totalPrice || 0),
-          // Los días van por separado; el texto queda por si algún otro lugar lo usa
-          diasConfeccionMin: confeccion.min,
-          diasConfeccionMax: confeccion.max,
           diasEnvioMin: envio.min,
           diasEnvioMax: envio.max,
           envioTexto: envio.texto,
-          diasTotalMin: totalMin,
-          diasTotalMax: totalMax,
-          deliveryText: `Llega en aprox. ${rangoTexto(totalMin, totalMax)} días (confección ${rangoTexto(confeccion.min, confeccion.max)} + envío ${envio.texto})`,
+          deliveryText: `Envío: ${envio.texto}`,
           branches: (rate.serviceDescription || '').toLowerCase().trim().endsWith('a sucursal')
             ? (rate.branches || []).map((b) => ({
                 branchCode: b.branch_code,
@@ -237,3 +224,4 @@ export async function POST(req) {
     )
   }
 }
+

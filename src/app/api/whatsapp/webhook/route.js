@@ -365,7 +365,7 @@ ENVÍOS:
 - Carriers disponibles: Andreani, Correo Argentino, OCA y Urbano
 - El cliente elige el tipo de envío en el selector: a sucursal, a domicilio, o exprés
 - El costo de envío varía según cantidad de prendas y zona; hay varias opciones a distinto precio para elegir
-- Tiempos: la confección tarda entre 4 y 7 días hábiles con demanda baja, o entre 7 y 12 días hábiles con mucha demanda o pedidos de varias prendas (se confecciona a pedido, no hay stock fijo). Una vez despachado, el envío tarda entre 2 y 6 días hábiles según la zona
+- Tiempos: NO informes plazos en días ni de confección ni de entrega. Si te preguntan cuánto tarda el pedido, respondé que el plazo se lo confirmamos por este mismo chat
 
 PAGOS:
 - Por Mercado Pago: dinero en cuenta, tarjeta de crédito, tarjeta de débito, cuotas sin tarjeta, etc.

@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
+import { cuponSeSumaConTransferencia } from '@/lib/configDescuentos'
 import { calcularCostoEnvio } from '@/lib/configEnvioGratis'
 import { nombreLineaCupon } from '@/lib/configCupones'
 import {
@@ -97,10 +98,14 @@ export async function POST(request) {
 
     const subtotal = itemsPedido.reduce((acc, item) => acc + item.precio * item.cantidad, 0)
 
-    // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
-    // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
+    // Cupón + transferencia (las reglas están en src/lib/configDescuentos.js, igual que en el checkout):
+    // - Los cupones de bienvenida SE SUMAN: primero se descuenta el cupón y el % de transferencia
+    //   se calcula sobre lo que queda (5% + 5% = 9,75%).
+    // - Cualquier otro cupón NO se suma: se aplica solo el descuento más alto.
+    //   Si empatan, queda el de transferencia y el cupón no se gasta.
     let cupon = null
     let descuentoCupon = 0
+    let sumaTransferencia = true // pasa a false si se aplica un cupón que no se suma
 
     if (cuponCodigo) {
       // Para usar un cupón hay que haber ingresado con Google
@@ -118,34 +123,42 @@ export async function POST(request) {
         return NextResponse.json({ error: validacion.error, cupon_invalido: true }, { status: 400 })
       }
 
-      const reservado = await usarCupon(validacion.cupon.codigo)
-      if (!reservado) {
-        return NextResponse.json(
-          { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
-          { status: 400 }
-        )
-      }
-      cuponReservado = validacion.cupon.codigo
+      const seSuma = cuponSeSumaConTransferencia(validacion.cupon.codigo)
+      const transferenciaSinCupon = Math.round(subtotal * DESCUENTO_TRANSFERENCIA)
+      // Un cupón que no se suma solo se aplica si descuenta MÁS que la transferencia
+      const cuponSeAplica = seSuma || validacion.descuento > transferenciaSinCupon
 
-      const uso = await reservarUsoCuenta(usuario.id, validacion.cupon.codigo)
-      if (uso !== 'ok') {
-        await deshacerReservas()
-        return NextResponse.json(
-          {
-            error: uso === 'ya_usado' ? MENSAJE_YA_USADO : 'No pudimos verificar el cupón. Probá de nuevo.',
-            cupon_invalido: true,
-          },
-          { status: 400 }
-        )
-      }
-      usoCuentaReservado = { userId: usuario.id, codigo: validacion.cupon.codigo }
+      if (cuponSeAplica) {
+        const reservado = await usarCupon(validacion.cupon.codigo)
+        if (!reservado) {
+          return NextResponse.json(
+            { error: 'El cupón no es válido o ya no está disponible.', cupon_invalido: true },
+            { status: 400 }
+          )
+        }
+        cuponReservado = validacion.cupon.codigo
 
-      cupon = validacion.cupon
-      descuentoCupon = validacion.descuento
+        const uso = await reservarUsoCuenta(usuario.id, validacion.cupon.codigo)
+        if (uso !== 'ok') {
+          await deshacerReservas()
+          return NextResponse.json(
+            {
+              error: uso === 'ya_usado' ? MENSAJE_YA_USADO : 'No pudimos verificar el cupón. Probá de nuevo.',
+              cupon_invalido: true,
+            },
+            { status: 400 }
+          )
+        }
+        usoCuentaReservado = { userId: usuario.id, codigo: validacion.cupon.codigo }
+
+        cupon = validacion.cupon
+        descuentoCupon = validacion.descuento
+        sumaTransferencia = seSuma
+      }
     }
 
     const subtotalConCupon = subtotal - descuentoCupon
-    const descuento = Math.round(subtotalConCupon * DESCUENTO_TRANSFERENCIA)
+    const descuento = sumaTransferencia ? Math.round(subtotalConCupon * DESCUENTO_TRANSFERENCIA) : 0
     const costoEnvio = calcularCostoEnvio(subtotalConCupon, zonaEnvio)
     const total = subtotalConCupon - descuento + costoEnvio
 

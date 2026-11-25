@@ -8,7 +8,6 @@ import {
   NOMBRE_ENVIO_GRATIS,
   elegirOpcionEnvioGratis,
 } from '@/lib/configEnvioGratis'
-import { textoConfeccion } from '@/lib/configConfeccion'
 import { ZONA_RETIRO } from '@/lib/configRetiro'
 
 // Opción de entrega sin envío. El checkout reconoce este nombre y no pide la dirección.
@@ -21,20 +20,12 @@ const RETIRO_EN_PERSONA = {
   envioBranchCode: null,
 }
 
-function rango(min, max) {
-  return min === max ? `${min}` : `${min} a ${max}`
-}
-
-// Plazos por separado: total, confección (de configConfeccion.js) y envío (según la zona, los define la cotización)
+// Plazo de envío según la zona (lo define la cotización, sin días de confección)
 function TiemposEntrega({ opcion }) {
   if (!opcion) return null
 
   return (
     <div style={{ marginTop: '4px', marginLeft: '24px', fontSize: '12px', color: '#666', lineHeight: 1.6 }}>
-      <div style={{ color: '#333', fontWeight: 600 }}>
-        Llega en aprox. {rango(opcion.diasTotalMin, opcion.diasTotalMax)} días
-      </div>
-      <div>🧵 Confección: {textoConfeccion()}</div>
       <div>🚚 Envío: {opcion.envioTexto}</div>
     </div>
   )

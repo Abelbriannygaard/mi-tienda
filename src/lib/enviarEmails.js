@@ -1,7 +1,6 @@
 // DESTINO: src/lib/enviarEmails.js  (reemplaza el archivo actual)
 import { Resend } from 'resend'
 import { DATOS_BANCARIOS, WHATSAPP_NEGOCIO } from './configTransferencia'
-import { textoConfeccion } from './configConfeccion'
 import { ZONA_RETIRO, ETIQUETA_RETIRO } from './configRetiro'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -45,11 +44,10 @@ function formatearItems(items) {
     .join('')
 }
 
-// Bloque de entrega para los emails al cliente: tiempo de confección y, si corresponde, aviso de retiro
+// Bloque de entrega para los emails al cliente: solo el aviso de retiro, si corresponde
 function bloqueEntrega(pedido) {
   const esRetiro = esPedidoConRetiro(pedido)
   return `
-          <p style="color: #2E2A26;"><strong>Tiempo de confección estimado:</strong> ${textoConfeccion()}.</p>
           ${esRetiro ? '<p style="color: #2E2A26;"><strong>Retiro en persona:</strong> te avisamos por WhatsApp o por email cuando tu pedido esté listo, y coordinamos el día y el horario para retirarlo.</p>' : ''}`
 }
 

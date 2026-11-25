@@ -1,4 +1,3 @@
-// DESTINO: src/app/checkout/page.js  (reemplaza el archivo actual)
 'use client'
 
 import Script from 'next/script'
@@ -10,8 +9,9 @@ import { useRouter } from 'next/navigation'
 import SelectorEnvio from './SelectorEnvio'
 import BrandBrickMP from './BrandBrickMP'
 import BotonGoogle from '../BotonGoogle'
+import BloqueConfianza from '../BloqueConfianza'
 import { DESCUENTO_TRANSFERENCIA } from '@/lib/configTransferencia'
-import { textoConfeccion } from '@/lib/configConfeccion'
+import { cuponSeSumaConTransferencia } from '@/lib/configDescuentos'
 import { ID_ENVIO_GRATIS_AUTO, UMBRAL_ENVIO_GRATIS, calcularCostoEnvio } from '@/lib/configEnvioGratis'
 import { etiquetaDescuento } from '@/lib/configCupones'
 import { TEXTO_RETIRO_CORTO } from '@/lib/configRetiro'
@@ -96,16 +96,23 @@ export default function Checkout() {
   const porcentajeDescuento = Math.round(DESCUENTO_TRANSFERENCIA * 100)
   const conTransferencia = metodoPago === 'transferencia'
 
-  // El cupón y el descuento por transferencia SE SUMAN: primero se descuenta el cupón
-  // y el % de transferencia se calcula sobre lo que queda (5% + 5% = 9,75%).
+  // Cupón + transferencia (las reglas están en src/lib/configDescuentos.js):
+  // - Los cupones de bienvenida SE SUMAN: primero se descuenta el cupón y el % de transferencia
+  //   se calcula sobre lo que queda (5% + 5% = 9,75%).
+  // - Cualquier otro cupón NO se suma: se aplica solo el descuento más alto.
+  //   Si empatan, queda el de transferencia y el cupón no se gasta.
   const hayCupon = cuponAplica && descuentoCupon > 0
-  const cuponEnUso = hayCupon
+  const cuponSeSuma = hayCupon && cuponSeSumaConTransferencia(cupon.codigo)
+  const transferenciaSinCupon = Math.round(totalProductos * DESCUENTO_TRANSFERENCIA)
+  const cuponNoSumaYEsMayor = hayCupon && !cuponSeSuma && conTransferencia && descuentoCupon > transferenciaSinCupon
+  const cuponDescartado = hayCupon && !cuponSeSuma && conTransferencia && !cuponNoSumaYEsMayor
+  const cuponEnUso = hayCupon && !cuponDescartado
   const descuentoCuponEfectivo = cuponEnUso ? descuentoCupon : 0
   const subtotalEfectivo = totalProductos - descuentoCuponEfectivo
 
   const montoTransferencia = Math.round(subtotalEfectivo * DESCUENTO_TRANSFERENCIA)
-  const transferenciaGana = conTransferencia
-  const descuentoTransferenciaEfectivo = conTransferencia ? montoTransferencia : 0
+  const transferenciaGana = conTransferencia && !cuponNoSumaYEsMayor
+  const descuentoTransferenciaEfectivo = transferenciaGana ? montoTransferencia : 0
   const envioGratisEfectivo = subtotalEfectivo >= UMBRAL_ENVIO_GRATIS
   const faltaParaEnvioGratis = Math.max(0, UMBRAL_ENVIO_GRATIS - subtotalEfectivo)
   const costoEnvioEfectivo = calcularCostoEnvio(subtotalEfectivo, zonaEnvio)
@@ -136,7 +143,6 @@ export default function Checkout() {
     }
     if (!datos.nombre.trim()) return 'Ingresá tu nombre completo'
     if (!datos.email.trim()) return 'Ingresá tu email'
-    if (!datos.dni.trim()) return 'Ingresá tu DNI'
     if (!datos.telefono.trim()) return 'Ingresá tu teléfono'
     if (envioGratis && !esRetiro) {
       // Con envío gratis la empresa se elige sola al cargar el código postal
@@ -321,8 +327,11 @@ export default function Checkout() {
                 <input name="telefono" type="tel" autoComplete="tel" value={datos.telefono} onChange={handleChange} style={inputStyle} />
               </label>
               <label className="checkout-field checkout-field-full">
-                DNI *
+                DNI <span>(opcional)</span>
                 <input name="dni" inputMode="numeric" value={datos.dni} onChange={handleChange} style={inputStyle} />
+                <small style={{ display: 'block', marginTop: '6px', color: '#8A8378', fontSize: '12px' }}>
+                  Lo usamos para emitir tu factura con tus datos.
+                </small>
               </label>
             </div>
           </section>
@@ -405,7 +414,15 @@ export default function Checkout() {
                 <span className="checkout-payment-icon">🏦</span>
                 <span className="checkout-payment-copy">
                   <strong>Transferencia bancaria <em>{porcentajeDescuento}% OFF</em></strong>
-                  <small>Ahorrás ${formatoPrecio(montoTransferencia)}. {hayCupon ? `Se suma a tu cupón ${cupon.codigo}.` : 'El descuento se aplica automáticamente.'}</small>
+                  <small>
+                    {cuponNoSumaYEsMayor
+                      ? `Tu cupón ${cupon.codigo} ya te da un descuento mayor, así que no se suma el de transferencia.`
+                      : cuponDescartado
+                        ? `Ahorrás $${formatoPrecio(montoTransferencia)}. Tu cupón ${cupon.codigo} no se suma: se aplica el descuento mayor.`
+                        : cuponSeSuma
+                          ? `Ahorrás $${formatoPrecio(montoTransferencia)}. Se suma a tu cupón ${cupon.codigo}.`
+                          : `Ahorrás $${formatoPrecio(montoTransferencia)}. El descuento se aplica automáticamente.`}
+                  </small>
                 </span>
               </label>
             </div>
@@ -501,12 +518,21 @@ export default function Checkout() {
                 <p className="checkout-free-shipping-hint">Te faltan ${formatoPrecio(faltaParaEnvioGratis)} en productos para obtener envío gratis desde ${formatoPrecio(UMBRAL_ENVIO_GRATIS)}.</p>
               )}
               <div className="checkout-total-line"><span>Total a pagar</span><strong>${formatoPrecio(totalAPagar)}</strong></div>
-              <p className="checkout-making-time">🧵 Confección a pedido: {textoConfeccion()}.</p>
             </div>
 
-            {hayCupon && conTransferencia && (
-              <p className="checkout-stacking-note">¡Tu cupón se combina con el descuento por transferencia! No se acumula con otros cupones.</p>
+            {cuponSeSuma && conTransferencia && (
+              <p className="checkout-stacking-note">¡Tu cupón de bienvenida se combina con el descuento por transferencia! Los demás cupones no se acumulan.</p>
             )}
+            {cuponDescartado && (
+              <p className="checkout-stacking-note">Tu cupón {cupon.codigo} no se suma al descuento por transferencia: se aplica el mayor de los dos (en este caso, el de transferencia) y el cupón no se gasta.</p>
+            )}
+            {cuponNoSumaYEsMayor && (
+              <p className="checkout-stacking-note">Tu cupón {cupon.codigo} es mayor que el descuento por transferencia: se aplica el cupón y no se suma el de transferencia.</p>
+            )}
+
+            <div style={{ margin: '14px 0' }}>
+              <BloqueConfianza compacto />
+            </div>
 
             <button
               type="submit"
@@ -550,3 +576,4 @@ function opcionPagoStyle(seleccionada) {
     backgroundColor: seleccionada ? '#F0F7F5' : '#FFFEFC',
   }
 }
+
