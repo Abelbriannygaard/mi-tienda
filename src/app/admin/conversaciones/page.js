@@ -9,6 +9,9 @@ const ZONA = 'America/Argentina/Buenos_Aires'
 // Tamaño máximo que permite WhatsApp según el tipo de archivo (en MB)
 const LIMITE_MB = { image: 5, video: 16, audio: 16, document: 50 }
 
+// Si la subida directa a Supabase falla, se reintenta por el servidor (solo hasta este tamaño)
+const LIMITE_SUBIDA_SERVIDOR = 4 * 1024 * 1024
+
 const TIPOS_ACEPTADOS =
   'image/jpeg,image/png,video/mp4,video/3gpp,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt'
 
@@ -469,13 +472,45 @@ export default function Conversaciones() {
           return
         }
 
-        // 2) Subir el archivo directo a Supabase Storage
-        const { error: errorSubida } = await supabase.storage
-          .from('whatsapp-media')
-          .uploadToSignedUrl(firma.path, firma.token, archivo, { contentType: firma.mime })
+        // 2) Subir el archivo directo a Supabase Storage. Si la conexión falla, se reintenta por el servidor.
+        let urlArchivo = firma.url
+        let mimeArchivo = firma.mime
+        let errorSubida = null
+        try {
+          const resultado = await supabase.storage
+            .from('whatsapp-media')
+            .uploadToSignedUrl(firma.path, firma.token, archivo, { contentType: firma.mime })
+          errorSubida = resultado.error
+        } catch (e) {
+          errorSubida = e
+        }
+
         if (errorSubida) {
-          setError('No se pudo subir el archivo: ' + errorSubida.message)
-          return
+          console.error('Falló la subida directa a Supabase:', errorSubida)
+
+          if (archivo.size > LIMITE_SUBIDA_SERVIDOR) {
+            setError(
+              'No se pudo subir el archivo (' +
+                (errorSubida.message || 'error de conexión') +
+                '). Probá con otra conexión o con un archivo de menos de 4 MB.'
+            )
+            return
+          }
+
+          const formulario = new FormData()
+          formulario.append('numero', abierto)
+          formulario.append('archivo', archivo)
+          const resSubida = await fetch('/api/admin/conversaciones/subir', {
+            method: 'POST',
+            body: formulario,
+          })
+          const datosSubida = await resSubida.json().catch(() => ({}))
+          if (!resSubida.ok) {
+            setError('No se pudo subir el archivo: ' + (datosSubida.error || 'error de conexión'))
+            return
+          }
+          urlArchivo = datosSubida.url
+          mimeArchivo = datosSubida.mime
         }
 
         // 3) Pedirle a WhatsApp que lo mande
@@ -485,8 +520,8 @@ export default function Conversaciones() {
           body: JSON.stringify({
             accion: 'enviar_media',
             numero: abierto,
-            url: firma.url,
-            mime: firma.mime,
+            url: urlArchivo,
+            mime: mimeArchivo,
             nombre: archivo.name,
             caption: firma.categoria === 'audio' ? '' : t,
           }),
