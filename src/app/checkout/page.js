@@ -434,6 +434,22 @@ export default function Checkout() {
             <span>🔒</span>
             <p>Tu información se utiliza únicamente para procesar y entregar tu pedido.</p>
           </div>
+
+          {/* Solo en celular: botón al final del formulario, donde termina de completar los datos */}
+          <div className="checkout-mobile-submit">
+            <div className="checkout-mobile-total">
+              <span>Total a pagar</span>
+              <strong>${formatoPrecio(totalAPagar)}</strong>
+            </div>
+            <button
+              type="submit"
+              disabled={enviando}
+              className="checkout-primary-button checkout-submit-button"
+            >
+              {enviando ? 'Procesando tu pedido...' : conTransferencia ? 'Confirmar pedido' : 'Continuar con Mercado Pago'}
+            </button>
+            <p className="checkout-submit-caption">Al confirmar, aceptás nuestros términos y condiciones de compra.</p>
+          </div>
         </div>
 
         <aside className="checkout-side-column">

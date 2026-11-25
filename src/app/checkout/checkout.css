@@ -114,3 +114,41 @@
   .checkout-product-image { width: 54px; height: 66px; }
   .checkout-product-price { font-size: 11px; }
 }
+/* Botón final solo para celular */
+.checkout-mobile-submit {
+  display: none;
+}
+
+@media (max-width: 850px) {
+  .checkout-mobile-submit {
+    display: block;
+    margin-top: 8px;
+    padding: 18px;
+    background: #fffefc;
+    border: 1px solid #e4dccf;
+    border-radius: 16px;
+  }
+
+  .checkout-mobile-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    font-size: 15px;
+    color: #2e2a26;
+  }
+
+  .checkout-mobile-total strong {
+    font-size: 24px;
+    color: #2f6b63;
+  }
+
+  .checkout-mobile-submit .checkout-primary-button {
+    width: 100%;
+  }
+
+  /* Deja aire abajo para que el botón de WhatsApp no tape el botón de pagar */
+  .checkout-page {
+    padding-bottom: 90px;
+  }
+}
