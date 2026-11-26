@@ -1,10 +1,21 @@
-// Envío gratis a partir de cierto monto.
+// Envío gratis.
 // Archivo: src/lib/configEnvioGratis.js
 //
-// El monto se compara contra el total de los PRODUCTOS (antes del descuento por transferencia
-// y sin contar el envío). Para cambiar el monto, editá UMBRAL_ENVIO_GRATIS y hacé git push.
+// ┌──────────────────────────────────────────────────────────────────────────────┐
+// │  INTERRUPTOR DE LA PROMO                                                     │
+// │  true  = envío gratis en TODOS los pedidos, sin importar el monto.           │
+// │  false = vuelve a la regla de siempre: gratis desde MONTO_ENVIO_GRATIS_NORMAL │
+// │  Para volver atrás: cambiá true por false, guardá y hacé git push.           │
+// └──────────────────────────────────────────────────────────────────────────────┘
+export const ENVIO_GRATIS_PARA_TODOS = true
 
-export const UMBRAL_ENVIO_GRATIS = 150000
+// Monto de la regla normal (cuando la promo está apagada).
+// Se compara contra el total de los PRODUCTOS, después del cupón y sin contar el envío.
+const MONTO_ENVIO_GRATIS_NORMAL = 150000
+
+// No tocar: con la promo prendida el mínimo es 0, o sea que todo pedido tiene envío gratis.
+// El resto de la tienda (carrito, checkout y servidor) lee este valor, por eso alcanza con el interruptor.
+export const UMBRAL_ENVIO_GRATIS = ENVIO_GRATIS_PARA_TODOS ? 0 : MONTO_ENVIO_GRATIS_NORMAL
 
 // Cuando el envío es gratis, el cliente NO elige empresa: el sistema la elige solo.
 // Orden de preferencia (siempre a domicilio). Se usa la primera que tenga tarifa para su código postal.
@@ -84,3 +95,4 @@ export function elegirOpcionEnvioGratis(opciones) {
 
   return null
 }
+
