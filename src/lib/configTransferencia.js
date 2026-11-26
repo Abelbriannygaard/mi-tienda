@@ -12,7 +12,7 @@ const CUENTA_ACTIVA = 'nueva'
 
 const CUENTAS = {
   nueva: {
-    titular: 'ABEL BRIAN NYGAARD', // REVISAR: tiene que ser el titular de la cuenta nueva
+    titular: 'ABEL RENE NYGAARD',
     banco: 'Banco Galicia', // REVISAR: el CBU nuevo empieza con 007 (Galicia)
     alias: 'TIA.DELTA.TANDA',
     cbu: '0070092430004010826138',
